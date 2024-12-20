@@ -74,4 +74,43 @@ end
         @test any(t -> t == "##believe", filtered_tokens)
         @test any(t -> t == "##able", filtered_tokens)
     end
+
+    # Test HuggingFace integration
+    @testset "HuggingFace integration" begin
+        # Test URL parsing
+        @test_throws ArgumentError HuggingFace.parse_repo_id("invalid-url")
+        @test_throws ArgumentError HuggingFace.parse_repo_id("https://example.com")
+
+        repo_url = "https://huggingface.co/answerdotai/ModernBERT-large"
+        @test HuggingFace.parse_repo_id(repo_url) == "answerdotai/ModernBERT-large"
+
+        # Test config download
+        temp_dir = mktempdir()
+        try
+            config_dir = download_config_files(repo_url, temp_dir)
+            @test isfile(joinpath(config_dir, "config.json"))
+            @test isfile(joinpath(config_dir, "tokenizer.json"))
+            @test isfile(joinpath(config_dir, "tokenizer_config.json"))
+            @test isfile(joinpath(config_dir, "special_tokens_map.json"))
+
+            # Test model initialization with downloaded config
+            model = ModernBertModel(
+                config_dir=config_dir,
+                model_path=joinpath(@__DIR__, "..", "data", "model.onnx")
+            )
+            @test model isa ModernBertModel
+            @test model.encoder isa BertTextEncoder
+            @test haskey(model.encoder.vocab, "[CLS]")
+        finally
+            rm(temp_dir, recursive=true, force=true)
+        end
+
+        # Test direct model initialization with repo URL
+        temp_model = ModernBertModel(
+            repo_url=repo_url,
+            model_path=joinpath(@__DIR__, "..", "data", "model.onnx")
+        )
+        @test temp_model isa ModernBertModel
+        @test temp_model.encoder isa BertTextEncoder
+    end
 end

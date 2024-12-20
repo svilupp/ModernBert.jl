@@ -3,6 +3,8 @@ module ModernBert
 using DataDeps
 using DoubleArrayTries
 const DAT = DoubleArrayTries
+using Downloads
+using HuggingFace
 using JSON3
 using ONNXRunTime
 import ONNXRunTime as ORT  # Use high-level API
@@ -13,9 +15,10 @@ using WordTokenizers
 
 include("wordpiece.jl")
 include("tokenizer.jl")
+include("huggingface.jl")
 include("encoder.jl")
 
-export ModernBertModel, encode, embed
+export ModernBertModel, encode, embed, download_config_files
 
 struct ModernBertModel
     session::Any  # Use Any to accommodate ORT model type
@@ -23,10 +26,20 @@ struct ModernBertModel
 end
 
 function ModernBertModel(;
-    model_path::String="data/model.onnx",
-    vocab_path::String="data/tokenizer.json"
+    model_path::String = joinpath(@__DIR__, "..", "data", "model.onnx"),
+    config_dir::Union{String, Nothing} = nothing,
+    repo_url::Union{String, Nothing} = nothing
 )
+    # Download config files if repo_url is provided
+    if !isnothing(repo_url)
+        config_dir = download_config_files(repo_url, tempdir())
+    end
+
+    # Use default config directory if none provided
+    config_dir = something(config_dir, joinpath(@__DIR__, "..", "data"))
+
     # Load tokenizer configuration
+    vocab_path = joinpath(config_dir, "tokenizer.json")
     vocab_config = JSON3.read(read(vocab_path))
     vocab = Dict{String,Int}(String(k) => v for (k, v) in vocab_config["model"]["vocab"])
 
@@ -38,12 +51,6 @@ function ModernBertModel(;
         special_tokens[token_content] = token_id
         vocab[token_content] = token_id  # Add to main vocabulary
     end
-
-    # Find special token IDs (now directly from special_tokens)
-    cls_token = get(special_tokens, "[CLS]", -1)  # Should be 50281
-    sep_token = get(special_tokens, "[SEP]", -1)  # Should be 50282
-    pad_token = get(special_tokens, "[PAD]", get(special_tokens, "<|padding|>", -1))  # Should be 50283 or 1
-    unk_token = get(special_tokens, "[UNK]", -1)  # Should be 50280
 
     # Create WordPiece tokenizer with the correct UNK token
     wp = WordPiece(collect(keys(vocab)), "[UNK]";
@@ -60,7 +67,7 @@ function ModernBertModel(;
     session = ORT.load_inference(model_path)
 
     return ModernBertModel(session, encoder)
-end  # End of ModernBertModel constructor
+end
 
 function encode(model::ModernBertModel, text::AbstractString)
     return encode(model.encoder, text)
@@ -150,6 +157,9 @@ function embed(model::ModernBertModel, texts::AbstractVector{<:AbstractString})
     sentence_embeddings = mean_pooling(logits, attention_mask)
 
     return sentence_embeddings
+end
+
+function __init__()
 end
 
 end # module
