@@ -24,3 +24,7 @@ docs/site/
 Manifest.toml
 # Large model files
 data/model.onnx
+
+model/**
+.DS_Store
+.vscode/**

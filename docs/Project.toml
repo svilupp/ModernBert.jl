@@ -1,0 +1,3 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ModernBert = "6c09db02-e349-4471-9daf-907b47b2492f"

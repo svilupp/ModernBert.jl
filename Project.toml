@@ -1,6 +1,6 @@
 name = "ModernBert"
-uuid = "d5ab7517-8dbb-3f8f-21fe-eecd07c62a1e"
-authors = ["Devin <devin@ai.dev>"]
+uuid = "6c09db02-e349-4471-9daf-907b47b2492f"
+authors = ["J S <49557684+svilupp@users.noreply.github.com> and contributors"]
 version = "0.1.0"
 
 [deps]

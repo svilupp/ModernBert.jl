@@ -1,5 +1,3 @@
-module HuggingFace
-
 using Downloads
 using JSON3
 
@@ -56,5 +54,3 @@ function download_config_files(repo_url::String, target_dir::String)
     end
     return target_dir
 end
-
-end # module
