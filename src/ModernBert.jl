@@ -4,7 +4,6 @@ using DataDeps
 using DoubleArrayTries
 const DAT = DoubleArrayTries
 using Downloads
-using HuggingFace
 using JSON3
 using ONNXRunTime
 import ONNXRunTime as ORT  # Use high-level API
@@ -12,6 +11,9 @@ using Statistics
 using StringViews
 using Unicode
 using WordTokenizers
+using Downloads
+using JSON3
+
 
 include("wordpiece.jl")
 include("tokenizer.jl")

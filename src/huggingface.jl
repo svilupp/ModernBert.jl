@@ -1,6 +1,3 @@
-using Downloads
-using JSON3
-
 const CONFIG_FILES = [
     "config.json",
     "tokenizer.json",
