@@ -163,3 +163,4 @@ end
         @test temp_model isa ModernBertModel
         @test temp_model.encoder isa BertTextEncoder
     end
+end
