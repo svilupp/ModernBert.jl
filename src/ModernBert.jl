@@ -16,11 +16,10 @@ include("bpe.jl")
 include("tokenizer.jl")
 include("encoder.jl")
 
-export BertModel, encode, embed, download_config_files
+export BertModel, encode, embed
 export BPETokenizer, create_bpe_tokenizer, BertTextEncoder, tokenize
-include("embedding.jl")
-
 export download_config_files
+include("embedding.jl")
 include("huggingface.jl")
 
 function __init__()
