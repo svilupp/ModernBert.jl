@@ -1,10 +1,10 @@
 """
     BertTextEncoder
 
-The text encoder for Bert model (WordPiece tokenization).
+The text encoder for Bert model (BPE tokenization).
 
 # Fields
-- `wp::WordPiece`: The WordPiece tokenizer.
+- `tokenizer::BPETokenizer`: The BPE tokenizer.
 - `vocab::Dict{String, Int}`: The vocabulary, 0-based indexing of tokens to match Python implementation.
 - `startsym::String`: The start symbol.
 - `endsym::String`: The end symbol.
@@ -12,7 +12,7 @@ The text encoder for Bert model (WordPiece tokenization).
 - `trunc::Union{Nothing, Int}`: The truncation length. Defaults to 8192 tokens.
 """
 @kwdef struct BertTextEncoder
-    wp::WordPiece
+    tokenizer::BPETokenizer
     vocab::Dict{String, Int}
     startsym::String = "[CLS]"
     endsym::String = "[SEP]"
@@ -51,20 +51,37 @@ function tokenize(enc::BertTextEncoder, text::AbstractString;
         add_special_tokens::Bool = true, add_end_token::Bool = true, token_ids::Bool = false,
         max_tokens::Union{Nothing, Int} = enc.trunc)
     tokens = token_ids ? Int[] : String[]
+    
+    # Add start token if special tokens are requested
     if add_special_tokens
         token = token_ids ? enc.vocab[enc.startsym] : enc.startsym
         push!(tokens, token)
     end
-    for token in bert_uncased_tokenizer(text)
-        append!(tokens, enc.wp(token; token_ids))
+    
+    # Use BPE tokenizer directly on the text
+    text_tokens = enc.tokenizer(text; token_ids=token_ids, add_special_tokens=false)
+    
+    # Handle truncation before adding end token
+    if !isnothing(enc.trunc)
+        max_len = enc.trunc
+        if add_special_tokens
+            max_len -= 2  # Account for both special tokens
+        elseif add_end_token
+            max_len -= 1  # Account for end token only
+        end
+        if length(text_tokens) > max_len
+            text_tokens = text_tokens[1:max_len]
+        end
     end
-    if !isnothing(max_tokens) && length(tokens) > (max_tokens - 1)
-        tokens = tokens[1:(max_tokens - 1)]
-    end
+    
+    append!(tokens, text_tokens)
+    
+    # Add end token if requested
     if add_special_tokens || add_end_token
         token = token_ids ? enc.vocab[enc.endsym] : enc.endsym
         push!(tokens, token)
     end
+    
     return tokens
 end
 

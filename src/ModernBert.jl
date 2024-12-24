@@ -11,15 +11,12 @@ using Statistics
 using StringViews
 using Unicode
 using WordTokenizers
-using Downloads
-using JSON3
 
-
-include("wordpiece.jl")
 include("tokenizer.jl")
 include("encoder.jl")
 
 export BertModel, encode, embed, download_config_files
+export BPETokenizer, create_bpe_tokenizer, BertTextEncoder, tokenize, add_special_tokens, add_end_token
 include("embedding.jl")
 
 export download_config_files

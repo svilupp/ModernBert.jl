@@ -1,4 +1,3 @@
-
 struct BertModel
     session::Any  # Use Any to accommodate ORT model type
     encoder::BertTextEncoder
@@ -33,13 +32,11 @@ function BertModel(;
         vocab[token_content] = token_id  # Add to main vocabulary
     end
 
-    # Create WordPiece tokenizer with the correct UNK token
-    wp = WordPiece(collect(keys(vocab)), "[UNK]";
-                   max_char=200,
-                   subword_prefix="##")
+    # Create BPE tokenizer with the vocabulary and special tokens
+    tokenizer = create_bpe_tokenizer(vocab_path)
 
     # Create encoder with special tokens (using actual tokens, not IDs)
-    encoder = BertTextEncoder(wp, vocab;
+    encoder = BertTextEncoder(tokenizer, vocab;
                             startsym="[CLS]",
                             endsym="[SEP]",
                             padsym="[PAD]")
