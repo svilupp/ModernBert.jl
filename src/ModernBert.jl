@@ -15,12 +15,13 @@ using WordTokenizers
 include("bpe.jl")
 include("tokenizer.jl")
 include("encoder.jl")
-
-export BertModel, encode, embed
-export BPETokenizer, create_bpe_tokenizer, BertTextEncoder, tokenize
-export download_config_files
 include("embedding.jl")
 include("huggingface.jl")
+
+export ModernBertModel, encode, embed
+export BPETokenizer, create_bpe_tokenizer, BertTextEncoder, tokenize
+export download_config_files
+export HuggingFace
 
 function __init__()
 end

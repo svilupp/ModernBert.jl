@@ -1,18 +1,18 @@
-struct BertModel
+struct ModernBertModel
     session::Any  # Use Any to accommodate ORT model type
     encoder::BertTextEncoder
 end
 
-Base.show(io::IO, model::BertModel) = print(io, "BertModel(session=$(typeof(model.session)), encoder=$(typeof(model.encoder)))")
+Base.show(io::IO, model::ModernBertModel) = print(io, "ModernBertModel(session=$(typeof(model.session)), encoder=$(typeof(model.encoder)))")
 
-function BertModel(;
+function ModernBertModel(;
     model_path::String = joinpath(@__DIR__, "..", "data", "model.onnx"),
     config_dir::Union{String, Nothing} = nothing,
     repo_url::Union{String, Nothing} = nothing
 )
     # Download config files if repo_url is provided
     if !isnothing(repo_url)
-        config_dir = download_config_files(repo_url, tempdir())
+        config_dir = HuggingFace.download_config_files(repo_url, tempdir())
     end
 
     # Use default config directory if none provided
@@ -44,14 +44,14 @@ function BertModel(;
     # Initialize ONNX session with high-level API
     session = ORT.load_inference(model_path)
 
-    return BertModel(session, encoder)
+    return ModernBertModel(session, encoder)
 end
 
-function encode(model::BertModel, text::AbstractString)
+function encode(model::ModernBertModel, text::AbstractString)
     return encode(model.encoder, text)
 end
 
-function encode(model::BertModel, texts::AbstractVector{<:AbstractString})
+function encode(model::ModernBertModel, texts::AbstractVector{<:AbstractString})
     return encode(model.encoder, texts)
 end
 
@@ -105,7 +105,7 @@ function mean_pooling(token_embeddings::AbstractArray, attention_mask::AbstractA
     return normalized
 end
 
-function embed(model::BertModel, text::AbstractString; kwargs...)
+function embed(model::ModernBertModel, text::AbstractString; kwargs...)
     token_ids, token_type_ids, attention_mask = encode(model, text)
 
     inputs = Dict(
@@ -121,7 +121,7 @@ function embed(model::BertModel, text::AbstractString; kwargs...)
     return reshape(sentence_embedding, 1024)
 end
 
-function embed(model::BertModel, texts::AbstractVector{<:AbstractString}; kwargs...)
+function embed(model::ModernBertModel, texts::AbstractVector{<:AbstractString}; kwargs...)
     token_ids, token_type_ids, attention_mask = encode(model, texts)
 
     inputs = Dict(
@@ -137,10 +137,10 @@ function embed(model::BertModel, texts::AbstractVector{<:AbstractString}; kwargs
     return sentence_embeddings
 end
 
-function (m::BertModel)(text::AbstractString; kwargs...)
+function (m::ModernBertModel)(text::AbstractString; kwargs...)
     return embed(m, text; kwargs...)
 end
 
-function (m::BertModel)(texts::AbstractVector{<:AbstractString}; kwargs...)
+function (m::ModernBertModel)(texts::AbstractVector{<:AbstractString}; kwargs...)
     return embed(m, texts; kwargs...)
 end
