@@ -1,5 +1,7 @@
 module HuggingFace
 
+using Downloads
+
 export parse_repo_id, download_config_files
 
 const CONFIG_FILES = [
