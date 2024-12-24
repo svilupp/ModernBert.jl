@@ -58,8 +58,24 @@ function tokenize(enc::BertTextEncoder, text::AbstractString;
         push!(tokens, token)
     end
     
-    # Use BPE tokenizer directly on the text
-    text_tokens = enc.tokenizer(text; token_ids=token_ids, add_special_tokens=false)
+    # Use BPE tokenizer to get tokens
+    text_tokens = enc.tokenizer(text; token_ids=false)  # Always get string tokens first
+    
+    # Convert to token IDs if requested
+    if token_ids
+        # Map tokens to IDs using the encoder's vocabulary
+        text_token_ids = Int[]
+        for token in text_tokens
+            # First check special tokens
+            id = get(enc.tokenizer.special_tokens, token, nothing)
+            if isnothing(id)
+                # Then check regular vocabulary
+                id = get(enc.vocab, token, enc.tokenizer.special_tokens["[UNK]"])
+            end
+            push!(text_token_ids, id)
+        end
+        text_tokens = text_token_ids
+    end
     
     # Handle truncation before adding end token
     if !isnothing(enc.trunc)
@@ -136,69 +152,6 @@ function encode(enc::BertTextEncoder, text::String; add_special_tokens::Bool = t
             end
         end
         token_ids = mat_token_ids
-    end
-    return token_ids, token_type_ids, attention_mask
-end
-
-function encode(enc::BertTextEncoder, query::AbstractString,
-        passage::AbstractString; add_special_tokens::Bool = true)
-    ## Tokenize texts
-    token_ids1 = tokenize(enc, query; add_special_tokens, token_ids = true)
-    token_ids2 = tokenize(enc, passage; add_special_tokens = false,
-        add_end_token = add_special_tokens, token_ids = true)
-    token_type_ids = vcat(zeros(Int, length(token_ids1)), ones(Int, length(token_ids2)))
-    token_ids = vcat(token_ids1, token_ids2)
-
-    ## check if we exceed truncation
-    if !isnothing(enc.trunc) && (length(token_ids)) > enc.trunc
-        token_ids = first(token_ids, enc.trunc)
-        ## add [SEP] token
-        token_ids[end] = enc.vocab[enc.endsym]
-        token_type_ids = first(token_type_ids, enc.trunc)
-    end
-
-    # Zero indexed as models are trained for Python
-    attention_mask = ones(Int, length(token_ids))
-    return token_ids, token_type_ids, attention_mask
-end
-
-function encode(enc::BertTextEncoder, query::AbstractString,
-        passages::AbstractVector{<:AbstractString}; add_special_tokens::Bool = true)
-
-    ## tokenize query, it will be repeated
-    token_ids1 = tokenize(enc, query; add_special_tokens, token_ids = true)
-
-    tokens_ids2_vec = [tokenize(enc, passage; add_special_tokens = false,
-                           add_end_token = add_special_tokens, token_ids = true)
-                       for passage in passages]
-    len_ = maximum(length, tokens_ids2_vec) + length(token_ids1) |>
-           x -> isnothing(enc.trunc) ? x : min(x, enc.trunc)
-
-    ## Assumes that padding is done with token ID 0
-    token_ids = zeros(Int, len_, length(passages))
-    token_type_ids = zeros(Int, len_, length(passages))
-    attention_mask = zeros(Int, len_, length(passages))
-
-    ## Encode to token IDS
-    token_ids1_len = length(token_ids1)
-    @inbounds for j in eachindex(tokens_ids2_vec)
-        token_ids[1:token_ids1_len, j] .= token_ids1
-        attention_mask[1:token_ids1_len, j] .= 1
-
-        tokens_ids2 = tokens_ids2_vec[j]
-        for i in eachindex(tokens_ids2)
-            if token_ids1_len + i > len_
-                break
-            elseif token_ids1_len + i == len_
-                ## give [SEP] token
-                token_ids[token_ids1_len + i, j] = enc.vocab[enc.endsym]
-            else
-                ## fill the tokens
-                token_ids[token_ids1_len + i, j] = tokens_ids2[i]
-            end
-            token_type_ids[token_ids1_len + i, j] = 1
-            attention_mask[token_ids1_len + i, j] = 1
-        end
     end
     return token_ids, token_type_ids, attention_mask
 end

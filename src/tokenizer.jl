@@ -67,17 +67,69 @@ skip 1. convert to unicode
 6. split each token with punct and punct remain
 
 =#
-function _bert_tokenise(input, ::Val{lower}) where {lower}
-    ts = TokenBuffer(lower ? normalize(lowercase(input), :NFD) : input)
-    while !isdone(ts)
-        (lower && catemn(ts)) ||
-            invalid(ts) ||
-            chinese(ts) ||
-            spaces(ts) ||
-            bertpunct(ts) ||
-            character(ts)
+function _bert_tokenise(input, ::Val{lower}, special_tokens::Vector{String}=String[]) where {lower}
+    # Initialize result tokens array
+    tokens = String[]
+    
+    # Normalize input if needed
+    text = lower ? normalize(lowercase(input), :NFD) : input
+    
+    # Process text while preserving special tokens
+    while !isempty(text)
+        found_special = false
+        
+        # Try to match special tokens first
+        for special_token in special_tokens
+            if startswith(text, special_token)
+                push!(tokens, special_token)
+                text = text[length(special_token)+1:end]
+                found_special = true
+                break
+            end
+        end
+        
+        if !found_special
+            # Find next special token position
+            next_special_pos = length(text) + 1
+            for special_token in special_tokens
+                pos = findfirst(special_token, text)
+                if !isnothing(pos)
+                    next_special_pos = min(next_special_pos, pos[1])
+                end
+            end
+            
+            # Process text until next special token
+            if next_special_pos > 1
+                segment = text[1:prevind(text, next_special_pos)]
+                ts = TokenBuffer(segment)
+                while !isdone(ts)
+                    (lower && catemn(ts)) ||
+                        invalid(ts) ||
+                        chinese(ts) ||
+                        spaces(ts) ||
+                        bertpunct(ts) ||
+                        character(ts)
+                end
+                append!(tokens, ts.tokens)
+                text = text[next_special_pos:end]
+            else
+                # No special tokens found, process remaining text
+                ts = TokenBuffer(text)
+                while !isdone(ts)
+                    (lower && catemn(ts)) ||
+                        invalid(ts) ||
+                        chinese(ts) ||
+                        spaces(ts) ||
+                        bertpunct(ts) ||
+                        character(ts)
+                end
+                append!(tokens, ts.tokens)
+                break
+            end
+        end
     end
-    return ts.tokens
+    
+    return tokens
 end
 
 """
