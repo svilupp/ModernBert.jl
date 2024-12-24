@@ -73,13 +73,13 @@ end
         text1 = "The capital of France is [MASK]."
         expected_ids1 = [50281, 510, 5347, 273, 6181, 310, 50284, 15, 50282]
         tokens1, _, _ = encode(model, text1)
-        @test tokens1 == expected_ids1 "Basic sentence tokenization failed"
+        @test tokens1 == expected_ids1, "Basic sentence tokenization failed"
         
         # Test another basic sentence
         text2 = "Hello world! This is a test."
         expected_ids2 = [50281, 12092, 1533, 2, 831, 310, 247, 1071, 15, 50282]
         tokens2, _, _ = encode(model, text2)
-        @test tokens2 == expected_ids2 "Basic sentence tokenization failed"
+        @test tokens2 == expected_ids2, "Basic sentence tokenization failed"
         
         # Test subword tokenization
         text3 = "unbelievable"
@@ -88,25 +88,25 @@ end
         filtered_tokens = filter(t -> !startswith(t, "["), token_strs)
         
         # BPE specific tests
-        @test length(filtered_tokens) > 1 "Word should be split into subwords"
-        @test all(!startswith.(filtered_tokens[2:end], "##")) "BPE tokens should not use WordPiece '##' prefix"
+        @test length(filtered_tokens) > 1, "Word should be split into subwords"
+        @test all(!startswith.(filtered_tokens[2:end], "##")), "BPE tokens should not use WordPiece '##' prefix"
         
         # Test special token handling
         special_tokens = ["[CLS]", "[SEP]", "[MASK]", "[PAD]", "[UNK]"]
         for token in special_tokens
             result, _, _ = encode(model, token)
-            @test length(result) == 3 "Special token should be encoded as [CLS] token [SEP]"
-            @test result[2] == model.encoder.vocab[token] "Special token not encoded correctly"
+            @test length(result) == 3, "Special token should be encoded as [CLS] token [SEP]"
+            @test result[2] == model.encoder.vocab[token], "Special token not encoded correctly"
         end
         
         # Test whitespace handling
         whitespace_text = "   "
         ws_tokens, _, _ = encode(model, whitespace_text)
-        @test length(ws_tokens) > 2 "Whitespace should be properly tokenized"
+        @test length(ws_tokens) > 2, "Whitespace should be properly tokenized"
         
         # Test empty string
         empty_tokens, _, _ = encode(model, "")
-        @test length(empty_tokens) == 2 "Empty string should return [CLS] [SEP]"
+        @test length(empty_tokens) == 2, "Empty string should return [CLS] [SEP]"
         @test empty_tokens[1] == model.encoder.vocab["[CLS]"]
         @test empty_tokens[2] == model.encoder.vocab["[SEP]"]
     end
