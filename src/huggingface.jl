@@ -1,6 +1,6 @@
 module HuggingFace
 
-using Downloads
+import Downloads: download
 
 export parse_repo_id, download_config_files
 
@@ -26,7 +26,7 @@ function download_config_files(repo_url::String, target_dir::String)
         for file in CONFIG_FILES
             url = "https://huggingface.co/$(repo_id)/resolve/main/$(file)"
             target = joinpath(target_dir, file)
-            Downloads.download(url, target)
+            download(url, target)
             push!(downloaded_files, target)
         end
     catch e
