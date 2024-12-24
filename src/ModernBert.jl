@@ -23,7 +23,6 @@ using .HuggingFace: download_config_files
 export ModernBertModel, encode, embed
 export BPETokenizer, create_bpe_tokenizer, BertTextEncoder, tokenize
 export HuggingFace
-export download_config_files
 
 function __init__()
 end
