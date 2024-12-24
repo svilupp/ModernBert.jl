@@ -114,16 +114,16 @@ end
     # Test HuggingFace integration
     @testset "HuggingFace integration" begin
         # Test URL parsing
-        @test_throws ArgumentError HuggingFace.parse_repo_id("invalid-url")
-        @test_throws ArgumentError HuggingFace.parse_repo_id("https://example.com")
+        @test_throws ArgumentError ModernBert.HuggingFace.parse_repo_id("invalid-url")
+        @test_throws ArgumentError ModernBert.HuggingFace.parse_repo_id("https://example.com")
 
         repo_url = "https://huggingface.co/answerdotai/ModernBERT-large"
-        @test HuggingFace.parse_repo_id(repo_url) == "answerdotai/ModernBERT-large"
+        @test ModernBert.HuggingFace.parse_repo_id(repo_url) == "answerdotai/ModernBERT-large"
 
         # Test config download
         temp_dir = mktempdir()
         try
-            config_dir = download_config_files(repo_url, temp_dir)
+            config_dir = ModernBert.download_config_files(repo_url, temp_dir)
             @test isfile(joinpath(config_dir, "config.json"))
             @test isfile(joinpath(config_dir, "tokenizer.json"))
             @test isfile(joinpath(config_dir, "tokenizer_config.json"))
