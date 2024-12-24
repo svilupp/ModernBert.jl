@@ -12,6 +12,7 @@ using StringViews
 using Unicode
 using WordTokenizers
 
+include("bpe.jl")
 include("tokenizer.jl")
 include("encoder.jl")
 
