@@ -1,6 +1,57 @@
 ## This code is forked from Transformers.jl: https://github.com/chengchingwen/Transformers.jl
 
 using Unicode: normalize  # Add explicit import for normalize function
+using JSON3
+
+export Tokenizer, tokenize, create_tokenizer
+
+include("bpe.jl")  # Include our BPE implementation
+
+"""
+    Tokenizer
+
+Main tokenizer struct that wraps the BPE tokenizer implementation.
+
+# Fields
+- `bpe::BPETokenizer`: The underlying BPE tokenizer
+"""
+struct Tokenizer
+    bpe::BPETokenizer
+end
+
+"""
+    create_tokenizer(config_path::String)
+
+Create a new tokenizer from a configuration file.
+
+# Arguments
+- `config_path::String`: Path to the tokenizer.json configuration file
+"""
+function create_tokenizer(config_path::String)
+    if !isfile(config_path)
+        error("Tokenizer configuration file not found: $config_path")
+    end
+    bpe = create_bpe_tokenizer(config_path)
+    return Tokenizer(bpe)
+end
+
+"""
+    tokenize(tokenizer::Tokenizer, text::AbstractString; token_ids::Bool=false)
+
+Tokenize text using the BPE tokenizer.
+
+# Arguments
+- `tokenizer::Tokenizer`: The tokenizer to use
+- `text::AbstractString`: Input text to tokenize
+- `token_ids::Bool=false`: If true, return token IDs instead of tokens
+
+# Returns
+- Vector of tokens or token IDs
+"""
+function tokenize(tokenizer::Tokenizer, text::AbstractString; token_ids::Bool=false)
+    # Use the BPE tokenizer implementation
+    return tokenizer.bpe(text; token_ids=token_ids)
+end
 
 function isinvalid(c)
     if c == '\t' || c == '\n' || c == '\r'
