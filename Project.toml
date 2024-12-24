@@ -4,7 +4,6 @@ authors = ["J S <49557684+svilupp@users.noreply.github.com> and contributors"]
 version = "0.1.0"
 
 [deps]
-Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
 DataDeps = "124859b0-ceae-595e-8997-d05f6a7a8dfe"
 DoubleArrayTries = "abbaa0e5-f788-499c-92af-c35ff4258c82"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
