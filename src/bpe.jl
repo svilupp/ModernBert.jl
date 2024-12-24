@@ -35,14 +35,14 @@ function load_tokenizer(config_path::String)
     # Load vocabulary and merges
     vocab = Dict{String,Int}()
     for (token, id) in config.model.vocab
-        vocab[token] = id
+        vocab[String(token)] = id
     end
     
     # Load merge rules
     merges = Vector{Tuple{String,String}}()
     for merge_rule in config.model.merges
-        p1, p2 = split(merge_rule)
-        push!(merges, (p1, p2))
+        p1, p2 = split(String(merge_rule))
+        push!(merges, (String(p1), String(p2)))
     end
     
     # Load special tokens and their properties
@@ -62,8 +62,8 @@ function load_tokenizer(config_path::String)
     
     for token in config.added_tokens
         if token.special
-            content = token.content
-            id = token.id
+            content = String(token.content)
+            id = Int(token.id)
             
             # Verify ID matches expected value for required tokens
             if haskey(required_tokens, content)
@@ -72,10 +72,10 @@ function load_tokenizer(config_path::String)
             
             special_tokens[content] = id
             special_token_properties[content] = (
-                lstrip = token.lstrip,
-                rstrip = token.rstrip,
-                normalized = token.normalized,
-                single_word = token.single_word
+                lstrip = Bool(token.lstrip),
+                rstrip = Bool(token.rstrip),
+                normalized = Bool(token.normalized),
+                single_word = Bool(token.single_word)
             )
         end
     end
@@ -119,7 +119,7 @@ function bpe_encode(tokenizer::BPETokenizer, word::String, add_prefix::Bool=true
     
     # Handle empty string or whitespace
     if isempty(word) || all(isspace, word)
-        spaces = count(==' ', word)
+        spaces = count(isequal(' '), word)
         if spaces == 0
             return String[]
         elseif spaces == 1
@@ -190,8 +190,11 @@ function (tokenizer::BPETokenizer)(text::AbstractString; token_ids::Bool=false)
     # Handle empty input
     isempty(text) && return token_ids ? Int[] : String[]
     
-    # Basic tokenization (similar to BERT's basic tokenizer)
-    basic_tokens = _bert_tokenise(text, Val(false))  # Use cased version as BPE handles casing
+    # Get list of special tokens for preservation during basic tokenization
+    special_token_list = collect(keys(tokenizer.special_tokens))
+    
+    # Basic tokenization with special token preservation
+    basic_tokens = _bert_tokenise(text, Val(false), special_token_list)  # Use cased version as BPE handles casing
     
     # Apply BPE to each token
     tokens = String[]
@@ -224,7 +227,8 @@ function (tokenizer::BPETokenizer)(text::AbstractString; token_ids::Bool=false)
         # Apply BPE encoding with 'Ġ' prefix for word boundaries
         # Don't add prefix for the first token if it's at the start of the text
         # or if the previous token wasn't whitespace
-        add_prefix = i > 1 && !all(isspace, basic_tokens[i-1])
+        # Also don't add prefix for punctuation
+        add_prefix = i > 1 && !all(isspace, basic_tokens[i-1]) && !isbertpunct(first(token))
         bpe_tokens = bpe_encode(tokenizer, token, add_prefix)
         append!(tokens, bpe_tokens)
     end
@@ -233,9 +237,6 @@ function (tokenizer::BPETokenizer)(text::AbstractString; token_ids::Bool=false)
     if token_ids
         return [get(tokenizer.special_tokens, t, get(tokenizer.vocab, t, tokenizer.special_tokens["[UNK]"])) for t in tokens]
     end
-    
-    return tokens
-end
     
     return tokens
 end

@@ -3,7 +3,7 @@
 using Unicode: normalize  # Add explicit import for normalize function
 using JSON3
 
-export Tokenizer, tokenize, create_tokenizer
+export Tokenizer, tokenize, create_tokenizer, add_special_tokens, add_end_token
 
 include("bpe.jl")  # Include our BPE implementation
 
@@ -48,9 +48,22 @@ Tokenize text using the BPE tokenizer.
 # Returns
 - Vector of tokens or token IDs
 """
-function tokenize(tokenizer::Tokenizer, text::AbstractString; token_ids::Bool=false)
-    # Use the BPE tokenizer implementation
-    return tokenizer.bpe(text; token_ids=token_ids)
+function tokenize(tokenizer::Tokenizer, text::AbstractString; token_ids::Bool=false, add_special_tokens::Bool=true)
+    # Get base tokens
+    tokens = tokenizer.bpe(text; token_ids=token_ids)
+    
+    # Add special tokens if requested
+    if add_special_tokens
+        if token_ids
+            cls_id = tokenizer.bpe.special_tokens["[CLS]"]
+            sep_id = tokenizer.bpe.special_tokens["[SEP]"]
+            return vcat([cls_id], tokens, [sep_id])
+        else
+            return vcat(["[CLS]"], tokens, ["[SEP]"])
+        end
+    end
+    
+    return tokens
 end
 
 function isinvalid(c)
@@ -118,17 +131,57 @@ skip 1. convert to unicode
 6. split each token with punct and punct remain
 
 =#
-function _bert_tokenise(input, ::Val{lower}) where {lower}
-    ts = TokenBuffer(lower ? normalize(lowercase(input), :NFD) : input)
-    while !isdone(ts)
-        (lower && catemn(ts)) ||
-            invalid(ts) ||
-            chinese(ts) ||
-            spaces(ts) ||
-            bertpunct(ts) ||
-            character(ts)
+function _bert_tokenise(input, ::Val{lower}, special_tokens=String[]) where {lower}
+    # First check for special tokens and preserve them
+    tokens = String[]
+    current_pos = 1
+    input_len = length(input)
+    
+    while current_pos <= input_len
+        # Check if any special token starts at current position
+        found_special = false
+        for special in special_tokens
+            if startswith(SubString(input, current_pos), special)
+                push!(tokens, special)
+                current_pos += length(special)
+                found_special = true
+                break
+            end
+        end
+        
+        if !found_special
+            # Process the next segment until potential special token
+            next_special = input_len + 1
+            for special in special_tokens
+                pos = findnext(special, input, current_pos)
+                if !isnothing(pos)
+                    # If pos is a range, take its start
+                    pos_start = pos isa Integer ? pos : first(pos)
+                    next_special = min(next_special, pos_start)
+                end
+            end
+            
+            # Tokenize the segment before next special token
+            end_pos = next_special - 1
+            if end_pos >= current_pos
+                segment = SubString(input, current_pos, end_pos)
+                if !isempty(segment)
+                    ts = TokenBuffer(lower ? normalize(lowercase(String(segment)), :NFD) : String(segment))
+                    while !isdone(ts)
+                        (lower && catemn(ts)) ||
+                            invalid(ts) ||
+                            chinese(ts) ||
+                            spaces(ts) ||
+                            bertpunct(ts) ||
+                            character(ts)
+                    end
+                    append!(tokens, ts.tokens)
+                end
+            end
+            current_pos = next_special
+        end
     end
-    return ts.tokens
+    return tokens
 end
 
 """
