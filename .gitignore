@@ -1,1 +1,7 @@
-*.onnx
+**/*.onnx
+
+**/Manifest.toml
+python/
+model/
+.vscode/
+.DS_Store
