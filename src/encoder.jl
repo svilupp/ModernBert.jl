@@ -9,7 +9,7 @@ The text encoder for Bert model (WordPiece tokenization).
 - `startsym::String`: The start symbol.
 - `endsym::String`: The end symbol.
 - `padsym::String`: The pad symbol.
-- `trunc::Union{Nothing, Int}`: The truncation length. Defaults to 512 tokens.
+- `trunc::Union{Nothing, Int}`: The truncation length. Defaults to 8192 tokens.
 """
 @kwdef struct BertTextEncoder
     wp::WordPiece
@@ -17,7 +17,7 @@ The text encoder for Bert model (WordPiece tokenization).
     startsym::String = "[CLS]"
     endsym::String = "[SEP]"
     padsym::String = "[PAD]"
-    trunc::Union{Nothing, Int} = 512
+    trunc::Union{Nothing, Int} = 8192
 end
 function Base.show(io::IO, enc::BertTextEncoder)
     dump(io, enc; maxdepth = 1)

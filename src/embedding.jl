@@ -4,6 +4,8 @@ struct BertModel
     encoder::BertTextEncoder
 end
 
+Base.show(io::IO, model::BertModel) = print(io, "BertModel(session=$(typeof(model.session)), encoder=$(typeof(model.encoder)))")
+
 function BertModel(;
     model_path::String = joinpath(@__DIR__, "..", "data", "model.onnx"),
     config_dir::Union{String, Nothing} = nothing,
@@ -15,7 +17,7 @@ function BertModel(;
     end
 
     # Use default config directory if none provided
-    config_dir = something(config_dir, joinpath(@__DIR__, "..", "data"))
+    config_dir = something(config_dir, dirname(model_path))
 
     # Load tokenizer configuration
     vocab_path = joinpath(config_dir, "tokenizer.json")

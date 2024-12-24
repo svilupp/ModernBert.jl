@@ -19,7 +19,7 @@ include("wordpiece.jl")
 include("tokenizer.jl")
 include("encoder.jl")
 
-export ModernBertModel, encode, embed, download_config_files
+export BertModel, encode, embed, download_config_files
 include("embedding.jl")
 
 export download_config_files
