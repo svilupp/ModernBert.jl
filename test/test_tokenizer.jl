@@ -1,10 +1,12 @@
+using ModernBert: BertModel, encode, BPETokenizer, load_tokenizer
+
 MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
 
 # Initialize model and tokenizer
 model = BertModel(model_path = MODEL_PATH)
 vocab_path = joinpath(@__DIR__, "model", "tokenizer.json")
 @assert isfile(vocab_path) "tokenizer.json not found"
-bpe = create_bpe_tokenizer(vocab_path)
+bpe = load_tokenizer(vocab_path)
 
 @testset "Vocabulary and Special Tokens" begin
     # Test vocabulary loading

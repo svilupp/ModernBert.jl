@@ -1,6 +1,6 @@
 struct BertModel
     session::Any  # Use Any to accommodate ORT model type
-    encoder::BertTextEncoder
+    encoder::BPETokenizer
 end
 
 function Base.show(io::IO, model::BertModel)
@@ -36,13 +36,7 @@ function BertModel(;
     end
 
     # Create BPE tokenizer with the vocabulary and special tokens
-    tokenizer = create_bpe_tokenizer(vocab_path)
-
-    # Create encoder with special tokens (using actual tokens, not IDs)
-    encoder = BertTextEncoder(tokenizer, vocab;
-        startsym = "[CLS]",
-        endsym = "[SEP]",
-        padsym = "[PAD]")
+    encoder = load_tokenizer(vocab_path)
 
     # Initialize ONNX session with high-level API
     session = ORT.load_inference(model_path)

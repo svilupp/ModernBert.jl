@@ -13,14 +13,14 @@ using StringViews
 using Unicode
 using WordTokenizers
 
-export BPETokenizer, create_bpe_tokenizer, load_tokenizer
-export tokenize, bpe_encode, get_pairs, get_token_id
+export BPETokenizer, load_tokenizer
+export tokenize, encode
 include("bpe.jl")
 
-export encode
-include("encoder.jl")
+# export encode
+# include("encoder.jl")
 
-export BertModel, embed, mean_pooling
+export BertModel, embed
 include("embedding.jl")
 
 export download_config_files

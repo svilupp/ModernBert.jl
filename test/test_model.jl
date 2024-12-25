@@ -1,4 +1,4 @@
-using ModernBert: BertModel, encode, BertTextEncoder
+using ModernBert: BertModel, encode, BPETokenizer
 
 @testset "Model initialization and basic functionality" begin
     MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
@@ -6,7 +6,7 @@ using ModernBert: BertModel, encode, BertTextEncoder
     model = BertModel(model_path = MODEL_PATH)
     @test model isa BertModel
     @test model.session isa ONNXRunTime.InferenceSession
-    @test model.encoder isa BertTextEncoder
+    @test model.encoder isa BPETokenizer
 
     # Test model configuration
     @test haskey(model.encoder.vocab, "[CLS]")

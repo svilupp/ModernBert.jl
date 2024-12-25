@@ -34,4 +34,4 @@ model/**
 python/**
 
 ## Scratch files
-_**.jl
+**/_*.jl
