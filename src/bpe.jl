@@ -136,82 +136,125 @@ function get_pairs(word::Vector{String})
     return pairs
 end
 
-"""
-    bpe_encode(tokenizer::BPETokenizer, word::AbstractString, add_prefix::Bool=true)
+# """
+#     bpe_encode(tokenizer::BPETokenizer, word::AbstractString, add_prefix::Bool=true)
 
-Encode a single word using BPE merge operations.
+# Encode a single word using BPE merge operations.
 
-# Arguments
-- `word::AbstractString`: Word to encode (String or SubString)
-- `add_prefix::Bool`: Whether to add the 'Ġ' prefix (for word boundaries)
-"""
-function bpe_encode(tokenizer::BPETokenizer, word::AbstractString,
-        add_prefix::Bool = true, token_ids::Bool = false)
-    unksym = token_ids ? tokenizer.special_tokens["[UNK]"] : "[UNK]"
-    # Handle empty input
-    isempty(word) && return token_ids ? Int[] : String[]
+# # Arguments
+# - `word::AbstractString`: Word to encode (String or SubString)
+# - `add_prefix::Bool`: Whether to add the 'Ġ' prefix (for word boundaries)
+# """
+# function bpe_encode(tokenizer::BPETokenizer, word::AbstractString,
+#         add_prefix::Bool = true, token_ids::Bool = false)
+#     unksym = token_ids ? tokenizer.special_tokens["[UNK]"] : "[UNK]"
+#     isempty(word) && return token_ids ? Int[] : String[]
 
-    # Check cache first
-    cache_key = add_prefix ? "Ġ" * word : word
-    if haskey(tokenizer.cache, cache_key)
-        cached_result = tokenizer.cache[cache_key]
-        if token_ids
-            return [get(tokenizer.vocab, t, unksym) for t in cached_result]
-        end
-        return copy(cached_result)
+#     cache_key = add_prefix ? "Ġ" * word : word
+#     if haskey(tokenizer.cache, cache_key)
+#         cached_result = tokenizer.cache[cache_key]
+#         if token_ids
+#             return [get(tokenizer.vocab, t, unksym) for t in cached_result]
+#         end
+#         return copy(cached_result)
+#     end
+
+#     # Initialize with character-level tokens
+#     chars = String[]
+#     if add_prefix
+#         push!(chars, "Ġ")
+#     end
+
+#     # Revert to splitting non-ASCII codepoints into raw UTF-8 bytes:
+#     for c in word
+#         push_char!(chars, c)
+#     end
+
+#     result = chars
+
+#     # Apply merge rules until no more merges possible
+#     while true
+#         valid_merges = Tuple{Int, Int, Int}[]
+
+#         # Find all possible merges
+#         for i in 1:(length(result) - 1)
+#             pair = (result[i], result[i + 1])
+#             if haskey(tokenizer.merge_index, pair)
+#                 push!(valid_merges, (i, i + 1, tokenizer.merge_index[pair]))
+#             end
+#         end
+
+#         isempty(valid_merges) && break
+
+#         # Apply highest priority merge
+#         sort!(valid_merges, by = x -> x[3])
+#         start_idx, end_idx, _ = valid_merges[1]
+#         merged = join(result[start_idx:end_idx])
+
+#         # Update result with merged token
+#         result = vcat(result[1:(start_idx - 1)], [merged], result[(end_idx + 1):end])
+#     end
+
+#     # Cache result if valid
+#     if !isempty(result) && all(t -> haskey(tokenizer.vocab, t), result)
+#         tokenizer.cache[cache_key] = copy(result)
+#     end
+
+#     # Convert to token IDs if requested
+#     if token_ids
+#         return [get(tokenizer.vocab, t, unksym) for t in result]
+#     end
+#     return result
+# end
+
+# Local fallback for isalnum, checking ASCII letters or digits
+function isalnum(c::Char)::Bool
+    return isletter(c) || isdigit(c)
+end
+# We'll consider "in-word punctuation" the case where:
+#   1) there's no whitespace around it,
+#   2) and it's part of "domain-like" strings such as .com or john@doe.org.
+function is_inword_punct(c::Char, prev_in_word::Bool, prev_char, next_char)
+    # Apostrophes or hyphens mid-word, e.g. O'Neill, co-workers
+    if (c == '\'' || c == '-') && prev_in_word
+        return true
+    end
+    # For domain-like strings "ABC.com" or "john@doe.org":
+    #   if there's a letter/digit on both sides with no space,
+    #   consider it "in-word".
+    if c in ('.', '@') &&
+       prev_char !== nothing && isalnum(prev_char) &&
+       next_char !== nothing && isalnum(next_char)
+        return true
+    end
+    return false
+end
+
+# Helper to push one character as ASCII or split it into raw UTF-8 bytes if it's non-ASCII
+function push_char!(chars::Vector{String}, c::Char, tokenizer::BPETokenizer)
+    str = string(c)
+
+    # For ASCII characters
+    if codepoint(c) <= 0x7f
+        push!(chars, str)
+        return
     end
 
-    # Initialize with character-level tokens
-    chars = String[]
-    if add_prefix
-        push!(chars, "Ġ")
+    # For Unicode characters, try to find the best match in vocabulary
+    # First try the character as-is
+    if haskey(tokenizer.vocab, str)
+        push!(chars, str)
+        return
     end
 
-    # Add individual characters
-    for c in word
-        !isempty(string(c)) && push!(chars, string(c))
-    end
-
-    result = chars
-
-    # Apply merge rules until no more merges possible
-    while true
-        valid_merges = Tuple{Int, Int, Int}[]
-
-        # Find all possible merges
-        for i in 1:(length(result) - 1)
-            pair = (result[i], result[i + 1])
-            if haskey(tokenizer.merge_index, pair)
-                push!(valid_merges, (i, i + 1, tokenizer.merge_index[pair]))
-            end
-        end
-
-        isempty(valid_merges) && break
-
-        # Apply highest priority merge
-        sort!(valid_merges, by = x -> x[3])
-        start_idx, end_idx, _ = valid_merges[1]
-        merged = join(result[start_idx:end_idx])
-
-        # Update result with merged token
-        result = vcat(result[1:(start_idx - 1)], [merged], result[(end_idx + 1):end])
-    end
-
-    # Cache result if valid
-    if !isempty(result) && all(t -> haskey(tokenizer.vocab, t), result)
-        tokenizer.cache[cache_key] = copy(result)
-    end
-
-    # Convert to token IDs if requested
-    if token_ids
-        return [get(tokenizer.vocab, t, unksym) for t in result]
-    end
-    return result
+    # If not in vocab, push as unknown token
+    push!(chars, "[UNK]")
 end
 
 """
     tokenize(tokenizer::BPETokenizer, text::AbstractString;
-        token_ids::Bool = false, add_special_tokens::Bool = true, add_prefix_space::Bool = false)
+        token_ids::Bool = false, add_special_tokens::Bool = true,
+        add_prefix_space::Bool = tokenizer.add_prefix_space)
 
 Function call overloading for BPETokenizer to make it callable directly.
 Tokenizes text using the BPE algorithm.
@@ -307,30 +350,56 @@ function tokenize(tokenizer::BPETokenizer, text::AbstractString;
             continue
         end
 
-        # Handle punctuation
+        # Determine if the character is "in-word" punctuation or a true word boundary
+        next_char = current_pos < text_length ? text[nextind(text, current_pos)] : nothing
+
+        # Check if this punctuation is in-word or truly breaks words
         if ispunct(c)
-            # Special case for hyphens in compound words
-            if c == '-' && in_word
-                push!(chars, string(c))
+            prev_char = current_pos > firstindex(text) ? text[prevind(text, current_pos)] :
+                        nothing
+            c_inword = is_inword_punct(c, in_word, prev_char, next_char)
+
+            if c_inword
+                push_char!(chars, c, tokenizer)
+                in_word = true
                 current_pos = nextind(text, current_pos)
                 continue
             end
 
-            push!(chars, string(c))
+            # If we already needed a boundary before punctuation, insert it
+            if need_boundary
+                push!(chars, "Ġ")
+                need_boundary = false
+            end
+            # Now push the punctuation itself exactly once
+            push_char!(chars, c, tokenizer)
             in_word = false
-            need_boundary = true
+            # Decide whether we add a boundary for the next token:
+            #   1) If there's nothing left or if the next character is whitespace, need_boundary = true
+            #   2) Otherwise, keep it false so the next token doesn't get "Ġ" (e.g. "[and]" → "[", "and")
+            if next_char === nothing || (next_char != nothing && isspace(next_char))
+                need_boundary = true
+            else
+                need_boundary = false
+            end
             current_pos = nextind(text, current_pos)
             continue
         end
 
-        # Handle start of new word
-        if !in_word && need_boundary
+        # Special cases for punctuation that shouldn't break words
+        if ispunct(c) && (c == '\'' || c == '-') && in_word
+            push_char!(chars, c, tokenizer)
+            current_pos = nextind(text, current_pos)
+            continue
+        end
+
+        # If we're about to start a new word and need_boundary is set, add a boundary
+        if need_boundary && !in_word
             push!(chars, "Ġ")
             need_boundary = false
         end
 
-        # Add current character
-        push!(chars, string(c))
+        push_char!(chars, c, tokenizer)
         in_word = true
         current_pos = nextind(text, current_pos)
     end

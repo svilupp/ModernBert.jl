@@ -8,7 +8,7 @@ vocab_path = joinpath(@__DIR__, "data", "tokenizer.json")
 config = JSON3.read(read(vocab_path));
 inv = Dict(v => k for (k, v) in pairs(config.model.vocab))
 
-inv[50280]
+inv[3532]
 
 inv[328], inv[21002], inv[17254]
 inv[891], inv[78], inv[181]

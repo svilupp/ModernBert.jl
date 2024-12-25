@@ -1,5 +1,5 @@
 
-using ModernBert: parse_repo_id, BertModel, BertTextEncoder, download_config_files
+using ModernBert: parse_repo_id, BertModel, BPETokenizer, download_config_files
 
 MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
 
@@ -38,5 +38,5 @@ MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
         model_path = MODEL_PATH
     )
     @test model isa BertModel
-    @test model.encoder isa BertTextEncoder
+    @test model.encoder isa BPETokenizer
 end
