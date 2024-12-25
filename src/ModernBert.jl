@@ -13,17 +13,17 @@ using StringViews
 using Unicode
 using WordTokenizers
 
+export BPETokenizer, create_bpe_tokenizer, load_tokenizer
+export tokenize, bpe_encode, get_pairs, get_token_id
 include("bpe.jl")
-using .BPE
+
+export encode
 include("encoder.jl")
 
-export BertModel, encode, embed
-export BPETokenizer, create_bpe_tokenizer, BertTextEncoder, tokenize, get_pairs, bpe_encode, load_tokenizer
-export download_config_files
+export BertModel, embed, mean_pooling
 include("embedding.jl")
-include("huggingface.jl")
 
-function __init__()
-end
+export download_config_files
+include("huggingface.jl")
 
 end # module

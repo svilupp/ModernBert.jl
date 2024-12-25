@@ -3,12 +3,15 @@ struct BertModel
     encoder::BertTextEncoder
 end
 
-Base.show(io::IO, model::BertModel) = print(io, "BertModel(session=$(typeof(model.session)), encoder=$(typeof(model.encoder)))")
+function Base.show(io::IO, model::BertModel)
+    print(
+        io, "BertModel(session=$(typeof(model.session)), encoder=$(typeof(model.encoder)))")
+end
 
 function BertModel(;
-    model_path::String = joinpath(@__DIR__, "..", "data", "model.onnx"),
-    config_dir::Union{String, Nothing} = nothing,
-    repo_url::Union{String, Nothing} = nothing
+        model_path::String = joinpath(@__DIR__, "..", "data", "model.onnx"),
+        config_dir::Union{String, Nothing} = nothing,
+        repo_url::Union{String, Nothing} = nothing
 )
     # Download config files if repo_url is provided
     if !isnothing(repo_url)
@@ -21,10 +24,10 @@ function BertModel(;
     # Load tokenizer configuration
     vocab_path = joinpath(config_dir, "tokenizer.json")
     vocab_config = JSON3.read(read(vocab_path))
-    vocab = Dict{String,Int}(String(k) => v for (k, v) in vocab_config["model"]["vocab"])
+    vocab = Dict{String, Int}(String(k) => v for (k, v) in vocab_config["model"]["vocab"])
 
     # Extract special tokens from added_tokens and add them to vocabulary
-    special_tokens = Dict{String,Int}()
+    special_tokens = Dict{String, Int}()
     for token in vocab_config["added_tokens"]
         token_content = String(token["content"])
         token_id = token["id"]
@@ -37,9 +40,9 @@ function BertModel(;
 
     # Create encoder with special tokens (using actual tokens, not IDs)
     encoder = BertTextEncoder(tokenizer, vocab;
-                            startsym="[CLS]",
-                            endsym="[SEP]",
-                            padsym="[PAD]")
+        startsym = "[CLS]",
+        endsym = "[SEP]",
+        padsym = "[PAD]")
 
     # Initialize ONNX session with high-level API
     session = ORT.load_inference(model_path)
@@ -55,10 +58,13 @@ function encode(model::BertModel, texts::AbstractVector{<:AbstractString})
     return encode(model.encoder, texts)
 end
 
-function mean_pooling(token_embeddings::AbstractArray, attention_mask::AbstractArray; kwargs...)
+function mean_pooling(
+        token_embeddings::AbstractArray, attention_mask::AbstractArray; verbose::Bool = false, kwargs...)
     # Debug information
-    @info "Token embeddings shape before processing: $(size(token_embeddings))"
-    @info "Attention mask shape before processing: $(size(attention_mask))"
+    if verbose
+        @info "Token embeddings shape before processing: $(size(token_embeddings))"
+        @info "Attention mask shape before processing: $(size(attention_mask))"
+    end
 
     # Get the hidden states (first 1024 dimensions)
     hidden_size = 1024
@@ -78,17 +84,21 @@ function mean_pooling(token_embeddings::AbstractArray, attention_mask::AbstractA
         hidden_states = reshape(token_embeddings, :, hidden_size)
         mask = reshape(attention_mask, :, 1)
     end
-    @info "Hidden states shape: $(size(hidden_states))"
-    @info "Attention mask shape after reshape: $(size(mask))"
+    if verbose
+        @info "Hidden states shape: $(size(hidden_states))"
+        @info "Attention mask shape after reshape: $(size(mask))"
+    end
 
     # Apply attention mask and compute mean
     masked_embeddings = hidden_states .* mask
-    summed = sum(masked_embeddings, dims=1)
-    counts = sum(mask, dims=1)
+    summed = sum(masked_embeddings, dims = 1)
+    counts = sum(mask, dims = 1)
 
     # Normalize and ensure correct output shape
-    normalized = dropdims(summed ./ max.(counts, 1), dims=1)
-    @info "Pre-L2 normalized shape: $(size(normalized))"
+    normalized = dropdims(summed ./ max.(counts, 1), dims = 1)
+    if verbose
+        @info "Pre-L2 normalized shape: $(size(normalized))"
+    end
 
     # Apply L2 normalization
     if ndims(normalized) == 1
@@ -97,12 +107,14 @@ function mean_pooling(token_embeddings::AbstractArray, attention_mask::AbstractA
         normalized = normalized ./ max(l2_norm, 1e-12)
     else
         # Batch case
-        l2_norms = sqrt.(sum(normalized .^ 2, dims=2))
+        l2_norms = sqrt.(sum(normalized .^ 2, dims = 2))
         normalized = normalized ./ max.(l2_norms, 1e-12)
     end
-    @info "Final L2-normalized shape: $(size(normalized))"
+    if verbose
+        @info "Final L2-normalized shape: $(size(normalized))"
+    end
 
-    return normalized
+    return normalized .|> Float32
 end
 
 function embed(model::BertModel, text::AbstractString; kwargs...)
@@ -114,11 +126,11 @@ function embed(model::BertModel, text::AbstractString; kwargs...)
     )
 
     outputs = model.session(inputs)
-    logits = first(values(outputs))
+    logits = first(values(outputs)) .|> Float32
 
     sentence_embedding = mean_pooling(logits, attention_mask; kwargs...)
 
-    return reshape(sentence_embedding, 1024)
+    return sentence_embedding
 end
 
 function embed(model::BertModel, texts::AbstractVector{<:AbstractString}; kwargs...)
@@ -130,7 +142,7 @@ function embed(model::BertModel, texts::AbstractVector{<:AbstractString}; kwargs
     )
 
     outputs = model.session(inputs)
-    logits = first(values(outputs))
+    logits = first(values(outputs)) .|> Float32
 
     sentence_embeddings = mean_pooling(logits, attention_mask)
 

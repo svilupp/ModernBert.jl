@@ -24,6 +24,7 @@ docs/site/
 Manifest.toml
 # Large model files
 data/model.onnx
+test/model/**
 
 model/**
 .DS_Store
@@ -31,3 +32,6 @@ model/**
 
 # Python files
 python/**
+
+## Scratch files
+_**.jl

@@ -24,7 +24,7 @@ function Base.show(io::IO, enc::BertTextEncoder)
 end
 
 function BertTextEncoder(
-        wp, vocab; startsym = "[CLS]", endsym = "[SEP]", padsym = "[PAD]", trunc = nothing)
+        wp, vocab; startsym = "[CLS]", endsym = "[SEP]", padsym = "[PAD]", trunc = 8192)
     haskey(vocab, startsym) ||
         @warn "startsym $startsym not in vocabulary, this might cause problem."
     haskey(vocab, endsym) ||
@@ -52,7 +52,7 @@ function tokenize(enc::BertTextEncoder, text::AbstractString;
         max_tokens::Union{Nothing, Int} = enc.trunc)
     # Initialize tokens vector with correct type
     tokens = Vector{token_ids ? Int : String}()
-    
+
     # Add start token if special tokens are requested and set prev_token
     if add_special_tokens
         if token_ids
@@ -64,25 +64,26 @@ function tokenize(enc::BertTextEncoder, text::AbstractString;
     else
         enc.tokenizer.prev_token = ""
     end
-    
+
     # Split text while preserving special tokens
     words = String[]
     current_pos = firstindex(text)
     text_length = lastindex(text)
-    
+
     while current_pos <= text_length
         # Skip whitespace
         while current_pos <= text_length && isspace(text[current_pos])
             current_pos = nextind(text, current_pos)
         end
         current_pos > text_length && break
-        
+
         # Check for special tokens first
         found_special = false
         for special_token in keys(enc.tokenizer.special_tokens)
             token_length = length(special_token)
             if current_pos + token_length - 1 <= text_length
-                potential_token = text[current_pos:min(current_pos + token_length - 1, text_length)]
+                potential_token = text[current_pos:min(
+                    current_pos + token_length - 1, text_length)]
                 if potential_token == special_token
                     push!(words, special_token)
                     current_pos += token_length
@@ -92,49 +93,54 @@ function tokenize(enc::BertTextEncoder, text::AbstractString;
             end
         end
         found_special && continue
-        
+
         # Find word boundary
         word_start = current_pos
         while current_pos <= text_length
-            if isspace(text[current_pos]) || any(special -> startswith(text[current_pos:end], special), keys(enc.tokenizer.special_tokens))
+            if isspace(text[current_pos]) ||
+               any(special -> startswith(text[current_pos:end], special),
+                keys(enc.tokenizer.special_tokens))
                 break
             end
             current_pos = nextind(text, current_pos)
         end
-        
+
         # Extract word
         if current_pos > word_start
-            word = text[word_start:current_pos-1]
+            word = text[word_start:(current_pos - 1)]
             push!(words, word)
         end
     end
-    
+
     processed_tokens = Vector{token_ids ? Int : String}()
-    
+
     for (i, word) in enumerate(words)
         # Skip empty words
         isempty(word) && continue
-        
+
         # Convert SubString to String if needed
         word_str = String(word)
-        
+
         # Check if this is a sentence-initial capitalized word
-        is_sentence_initial = enc.tokenizer.prev_token == enc.startsym && !isempty(word_str) && isuppercase(first(word_str))
-        
+        is_sentence_initial = enc.tokenizer.prev_token == enc.startsym &&
+                              !isempty(word_str) && isuppercase(first(word_str))
+
         if is_sentence_initial && haskey(enc.vocab, word_str)
             # Use unprefixed version for sentence-initial capitalized words
             push!(processed_tokens, token_ids ? enc.vocab[word_str] : word_str)
             enc.tokenizer.prev_token = word_str
         else
             # Process word with BPE tokenizer
-            word_tokens = enc.tokenizer(word_str; token_ids=token_ids, add_special_tokens=false)
+            word_tokens = enc.tokenizer(
+                word_str; token_ids = token_ids, add_special_tokens = false)
             append!(processed_tokens, word_tokens)
             if !isempty(word_tokens)
-                enc.tokenizer.prev_token = token_ids ? string(word_tokens[end]) : word_tokens[end]
+                enc.tokenizer.prev_token = token_ids ? string(word_tokens[end]) :
+                                           word_tokens[end]
             end
         end
     end
-    
+
     # Handle truncation before adding end token
     if !isnothing(enc.trunc)
         max_len = enc.trunc
@@ -147,16 +153,16 @@ function tokenize(enc::BertTextEncoder, text::AbstractString;
             processed_tokens = processed_tokens[1:max_len]
         end
     end
-    
+
     # Add processed tokens to result
     append!(tokens, processed_tokens)
-    
+
     # Add end token if requested
     if add_special_tokens || add_end_token
         token = token_ids ? enc.vocab[enc.endsym] : enc.endsym
         push!(tokens, token)
     end
-    
+
     return tokens
 end
 
@@ -170,7 +176,7 @@ We enforce `max_tokens` to be a concrete number here to be able to do `split_ins
 `split_instead_trunc` splits any long sequences into several smaller ones.
 """
 function encode(enc::BertTextEncoder, text::String; add_special_tokens::Bool = true,
-        max_tokens::Union{Nothing,Int} = enc.trunc, split_instead_trunc::Bool = false)
+        max_tokens::Union{Nothing, Int} = enc.trunc, split_instead_trunc::Bool = false)
     if !split_instead_trunc
         ## Standard run - if text is longer, we truncate it and ignore
         token_ids = tokenize(enc, text; add_special_tokens, token_ids = true, max_tokens)
