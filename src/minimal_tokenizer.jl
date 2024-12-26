@@ -619,11 +619,11 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                     # Check KNOWN_TOKENS first
                     if haskey(KNOWN_TOKENS, "Ġ" * current_text) && length(current_text) > length(longest_match)
                         longest_match = current_text
-                        longest_id = KNOWN_TOKENS["Ġ" * current_text]
+                        longest_id = get(KNOWN_TOKENS, "Ġ" * current_text, nothing)
                     # Then check vocabulary
                     elseif haskey(tokenizer.vocab, "Ġ" * current_text) && length(current_text) > length(longest_match)
                         longest_match = current_text
-                        longest_id = tokenizer.vocab["Ġ" * current_text]
+                        longest_id = get(tokenizer.vocab, "Ġ" * current_text, nothing)
                     end
                 end
                 
@@ -632,11 +632,11 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                     # Check KNOWN_TOKENS first
                     if haskey(KNOWN_TOKENS, current_text)
                         longest_match = current_text
-                        longest_id = KNOWN_TOKENS[current_text]
+                        longest_id = get(KNOWN_TOKENS, current_text, nothing)
                     # Then check vocabulary
                     elseif haskey(tokenizer.vocab, current_text)
                         longest_match = current_text
-                        longest_id = tokenizer.vocab[current_text]
+                        longest_id = get(tokenizer.vocab, current_text, nothing)
                     end
                 end
                 
@@ -645,7 +645,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         end
         
         # If we found a match, add it and advance
-        if !isempty(longest_match)
+        if !isempty(longest_match) && !isnothing(longest_id)
             push!(tokens, longest_id)
             # Safely advance index by the length of the matched token
             remaining_chars = length(longest_match)
@@ -731,8 +731,8 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{Str
     # Process each text
     results = [encode(tokenizer, text) for text in texts]
     
-    # Get maximum sequence length
-    max_len = minimum([512, maximum(length(r[1]) for r in results)])
+    # Get maximum sequence length (capped at 512)
+    max_len = min(512, maximum(length(r[1]) for r in results))
     
     # Create padded arrays
     n_texts = length(texts)
@@ -740,16 +740,7 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{Str
     types_matrix = zeros(Int, max_len, n_texts)
     mask_matrix = zeros(Int, max_len, n_texts)
     
-    # Fill arrays with actual values
-    for (j, result) in enumerate(results)
-        tokens, types, mask = result
-        len = length(tokens)
-        tokens_matrix[1:len, j] = tokens
-        types_matrix[1:len, j] = types
-        mask_matrix[1:len, j] = mask
-    end
-    
-    # Fill matrices
+    # Fill matrices with actual values
     for (j, (tokens, types, mask)) in enumerate(results)
         len = min(length(tokens), max_len)
         tokens_matrix[1:len, j] = tokens[1:len]
