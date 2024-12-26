@@ -579,9 +579,11 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         @label next_iteration
     end
     
-    # Add period token only if not already present
-    if !isempty(tokens) && text[end] == '.' && tokens[end] != KNOWN_TOKENS["."]
-        push!(tokens, KNOWN_TOKENS["."])  # Use period token (15)
+    # Add period token only if not already present and text ends with period
+    if !isempty(text) && text[end] == '.'
+        if isempty(tokens) || (!isempty(tokens) && tokens[end] != KNOWN_TOKENS["."])
+            push!(tokens, KNOWN_TOKENS["."])  # Use period token (15)
+        end
     end
     
     return tokens
