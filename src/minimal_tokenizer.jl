@@ -301,101 +301,103 @@ end
 
 # Basic tokenization function
 function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true)
-    # Initialize tokens array at the start
+    # Initialize tokens array and handle special cases
     local tokens = Int[]
     
-    # Early return for empty text
+    # Early returns for special cases
     if isempty(text)
         return tokens
-    end
-    
-    # Empty text case already handled above
-    
-    # Handle special cases
-    
-    # Check KNOWN_TOKENS first for exact matches
-    if haskey(KNOWN_TOKENS, text)
-        push!(tokens, KNOWN_TOKENS[text])
-        return tokens
-    elseif haskey(KNOWN_TOKENS, "Ġ" * text)
-        push!(tokens, KNOWN_TOKENS["Ġ" * text])
-        return tokens
-    end
-    
-    # Then check special tokens
-    if haskey(tokenizer.special_tokens, text)
-        return [tokenizer.special_tokens[text]]
-    end
-    
-    if all(isspace, text)
+    elseif all(isspace, text)
         return [REQUIRED_TOKENS[" "]]  # Space token (50275)
     end
     
-    # Continue with main tokenization (tokens array already initialized)
-    i = firstindex(text)
-    last_was_space = true  # Start with true to handle first word correctly
+    # Cache commonly used dictionaries for faster lookups
+    known_tokens = KNOWN_TOKENS
+    special_tokens = tokenizer.special_tokens
+    vocab = tokenizer.vocab
     
-    # Main tokenization loop with safe string indexing
-    while i <= lastindex(text)
-        @label next_iteration
-        
-        # Reset state at start of iteration
-        longest_match = ""
-        longest_id = nothing
-        current_idx = i
-        current_text = ""
-        
-        # Handle whitespace immediately
-        if i <= lastindex(text) && isspace(text[i])
+    # Check for exact matches in order of priority
+    if haskey(known_tokens, text)
+        return [known_tokens[text]]
+    elseif haskey(known_tokens, "Ġ" * text)
+        return [known_tokens["Ġ" * text]]
+    elseif haskey(special_tokens, text)
+        return [special_tokens[text]]
+    end
+    
+    # Cache frequently used values
+    known_tokens = tokenizer.known_tokens
+    vocab = tokenizer.vocab
+    special_tokens = tokenizer.special_tokens
+    
+    # Initialize state for main tokenization
+    i = firstindex(text)
+    last_was_space = true
+    tokens = Int[]
+    text_length = lastindex(text)
+    
+    # Pre-allocate buffers
+    longest_match = ""
+    current_text = ""
+    
+    # Main tokenization loop
+    while i <= text_length
+        # Handle whitespace efficiently
+        if isspace(text[i])
             i = nextind(text, i)
             last_was_space = true
             continue
         end
         
-        # Find the end of the current word or punctuation sequence safely
+        # Reset state for each token
+        longest_id = nothing
+        current_idx = i
+        
+        # Find word boundaries more efficiently
         word_end = i
-        while word_end <= lastindex(text)
-            # Get current character safely
+        in_punctuation = false
+        
+        # Process characters until we hit a boundary
+        while word_end <= text_length
             curr_char = text[word_end]
+            
+            # Stop at whitespace
             if isspace(curr_char)
                 break
             end
             
             # Handle punctuation boundaries
-            if ispunct(curr_char)
-                # If we're at a punctuation mark and it's not part of the current word,
-                # stop here unless we're already processing punctuation
-                if word_end > i && word_end > firstindex(text)
-                    prev_char = text[prevind(text, word_end)]
-                    if !ispunct(prev_char)
-                        break
-                    end
-                end
+            curr_is_punct = ispunct(curr_char)
+            if curr_is_punct != in_punctuation && word_end > i
+                break
             end
+            in_punctuation = curr_is_punct
             
-            # Safely advance to next character
+            # Advance to next character
             next_end = nextind(text, word_end)
-            if next_end > lastindex(text)
+            if next_end > text_length
                 break
             end
             word_end = next_end
         end
+        
+        # Extract word safely
         full_word = text[i:prevind(text, word_end)]
             
-            # Try to match the full word first with appropriate prefix
+            # Try to match the full word with cached dictionaries
             if last_was_space
                 # After space, try Ġ-prefixed first
                 prefixed_word = "Ġ" * full_word
-                if haskey(KNOWN_TOKENS, prefixed_word)
-                    push!(tokens, KNOWN_TOKENS[prefixed_word])
+                if haskey(known_tokens, prefixed_word)
+                    push!(tokens, known_tokens[prefixed_word])
                     i = word_end
                     last_was_space = false
-                    continue  # Return to start of loop
-                elseif haskey(tokenizer.vocab, prefixed_word)
-                    push!(tokens, tokenizer.vocab[prefixed_word])
+                    continue
+                elseif haskey(vocab, prefixed_word)
+                    push!(tokens, vocab[prefixed_word])
                     i = word_end
                     last_was_space = false
-                    @goto next_iteration
+                    continue
                 end
                 
                 # If the word ends with punctuation, try without it
@@ -434,32 +436,32 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 end
             end
             
-            # Try non-prefixed version
-            if haskey(KNOWN_TOKENS, full_word)
-                push!(tokens, KNOWN_TOKENS[full_word])
+            # Try non-prefixed version with cached dictionaries
+            if haskey(known_tokens, full_word)
+                push!(tokens, known_tokens[full_word])
                 i = word_end
                 last_was_space = false
-                continue  # Return to start of loop
-            elseif haskey(tokenizer.vocab, full_word)
-                push!(tokens, tokenizer.vocab[full_word])
+                continue
+            elseif haskey(vocab, full_word)
+                push!(tokens, vocab[full_word])
                 i = word_end
                 last_was_space = false
-                continue  # Return to start of loop
+                continue
             end
             
-            # Handle punctuation and special characters
+            # Handle punctuation and special characters more efficiently
             if all(c -> ispunct(c) || c in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}', '\''], full_word)
-                # Try to match the full punctuation sequence first
-                if haskey(KNOWN_TOKENS, full_word)
-                    push!(tokens, KNOWN_TOKENS[full_word])
+                # Try to match the full punctuation sequence with cached dictionaries
+                if haskey(known_tokens, full_word)
+                    push!(tokens, known_tokens[full_word])
                     i = word_end
                     last_was_space = false
-                    continue  # Return to start of loop
-                elseif haskey(tokenizer.vocab, full_word)
-                    push!(tokens, tokenizer.vocab[full_word])
+                    continue
+                elseif haskey(vocab, full_word)
+                    push!(tokens, vocab[full_word])
                     i = word_end
                     last_was_space = false
-                    continue  # Return to start of loop
+                    continue
                 end
                 
                 # If we can't match the full sequence, process character by character
