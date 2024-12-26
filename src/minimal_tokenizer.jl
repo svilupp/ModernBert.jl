@@ -298,19 +298,21 @@ end
 
 # Basic tokenization function
 function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true)
-    # Handle special cases
-    if isempty(text)
-        return Int[]
-    end
-    
     # Initialize tokens array
     tokens = Int[]
     
+    # Handle special cases
+    if isempty(text)
+        return tokens
+    end
+    
     # Check KNOWN_TOKENS first for exact matches
     if haskey(KNOWN_TOKENS, text)
-        return [KNOWN_TOKENS[text]]
+        push!(tokens, KNOWN_TOKENS[text])
+        return tokens
     elseif haskey(KNOWN_TOKENS, "Ġ" * text)
-        return [KNOWN_TOKENS["Ġ" * text]]
+        push!(tokens, KNOWN_TOKENS["Ġ" * text])
+        return tokens
     end
     
     # Then check special tokens
