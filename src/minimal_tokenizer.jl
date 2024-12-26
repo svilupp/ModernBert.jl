@@ -307,7 +307,6 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     end
     
     # Handle special cases
-    end
     
     # Check KNOWN_TOKENS first for exact matches
     if haskey(KNOWN_TOKENS, text)
