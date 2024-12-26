@@ -162,34 +162,39 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
         return longest_match, longest_id
     end
     
+    # Determine if we're at start/after space
+    is_start_or_after_space = start_idx == firstindex(text) || 
+        (start_idx > firstindex(text) && isspace(text[prevind(text, start_idx)]))
+    
     while current_idx <= lastindex(text)
         # Try to match increasingly longer substrings
         # Use nextind/prevind for proper UTF-8 character handling
         try
             substr = text[start_idx:current_idx]
             
-            # Check KNOWN_TOKENS first for both regular and Ġ-prefixed variants
-            if haskey(KNOWN_TOKENS, substr)
-                longest_match = substr
-                longest_id = KNOWN_TOKENS[substr]
-            elseif haskey(KNOWN_TOKENS, "Ġ" * substr)
-                longest_match = substr
-                longest_id = KNOWN_TOKENS["Ġ" * substr]
-            # Then check vocabulary
-            elseif haskey(tokenizer.vocab, substr)
-                longest_match = substr
-                longest_id = tokenizer.vocab[substr]
+            # Try variants in appropriate order based on position
+            if is_start_or_after_space
+                # At start or after space, check Ġ-prefixed first
+                variants = ["Ġ" * substr, substr]
+            else
+                # Mid-word, check normal variant first
+                variants = [substr, "Ġ" * substr]
             end
             
-            # Try with space prefix for first token or after space
-            if start_idx == firstindex(text) || (start_idx > firstindex(text) && isspace(text[prevind(text, start_idx)]))
-                space_substr = "Ġ" * substr
-                if haskey(KNOWN_TOKENS, space_substr)
+            # Check each variant against token dictionaries
+            for variant in variants
+                # Check KNOWN_TOKENS first (highest priority)
+                if haskey(KNOWN_TOKENS, variant)
                     longest_match = substr
-                    longest_id = KNOWN_TOKENS[space_substr]
-                elseif haskey(tokenizer.vocab, space_substr)
+                    longest_id = KNOWN_TOKENS[variant]
+                    break
+                end
+                
+                # Then check main vocabulary
+                if haskey(tokenizer.vocab, variant)
                     longest_match = substr
-                    longest_id = tokenizer.vocab[space_substr]
+                    longest_id = tokenizer.vocab[variant]
+                    break
                 end
             end
             
@@ -221,8 +226,13 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
         return [tokenizer.vocab[" "]]  # Return space token (50275)
     end
     
-    # For completely unknown words, check all variants before returning UNK
-    if firstindex(text) == 1 || isspace(text[prevind(text, firstindex(text))])
+    # For all words, check all variants before returning UNK
+    # Determine if we're at start/after space or mid-word
+    is_start_or_after_space = firstindex(text) == 1 || 
+        (firstindex(text) > 1 && isspace(text[prevind(text, firstindex(text))]))
+    
+    # Try all variants in appropriate order
+    if is_start_or_after_space
         # At start or after space, check Ġ-prefixed first
         variants = ["Ġ" * text, text]
     else
@@ -230,173 +240,27 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
         variants = [text, "Ġ" * text]
     end
     
+    # Check each variant against all token dictionaries
     for variant in variants
+        # Check KNOWN_TOKENS first (highest priority)
         if haskey(KNOWN_TOKENS, variant)
             return [KNOWN_TOKENS[variant]]
-        elseif haskey(tokenizer.vocab, variant)
+        end
+        
+        # Then check main vocabulary
+        if haskey(tokenizer.vocab, variant)
             return [tokenizer.vocab[variant]]
-        elseif haskey(tokenizer.special_tokens, variant)
+        end
+        
+        # Finally check special tokens
+        if haskey(tokenizer.special_tokens, variant)
             return [tokenizer.special_tokens[variant]]
         end
     end
     
-    # If no match found, return UNK
+    # If no match found in any variant, return UNK
     return [tokenizer.special_tokens["[UNK]"]]
-
-    
-    # For single token case
-    # Always check KNOWN_TOKENS first
-    if haskey(KNOWN_TOKENS, text)
-        return [KNOWN_TOKENS[text]]
-    elseif haskey(KNOWN_TOKENS, "Ġ" * text)
-        return [KNOWN_TOKENS["Ġ" * text]]
-    end
-
-    # Then check special tokens
-    if haskey(tokenizer.special_tokens, text)
-        return [tokenizer.special_tokens[text]]
-    end
-
-    # For punctuation and special characters, use normal variant
-    if length(text) == 1 && (ispunct(text[1]) || text[1] in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}'])
-        if haskey(tokenizer.vocab, text)
-            return [tokenizer.vocab[text]]
-        end
-    end
-
-    # For words after spaces or at start, try Ġ-prefixed first
-    if firstindex(text) == 1 || isspace(text[prevind(text, firstindex(text))])
-        # At start or after space, try Ġ-prefixed first for known tokens
-        if haskey(KNOWN_TOKENS, "Ġ" * text)
-            return [KNOWN_TOKENS["Ġ" * text]]
-        elseif haskey(KNOWN_TOKENS, text)
-            return [KNOWN_TOKENS[text]]
-        # Then try vocabulary
-        elseif haskey(tokenizer.vocab, "Ġ" * text)
-            return [tokenizer.vocab["Ġ" * text]]
-        elseif haskey(tokenizer.vocab, text)
-            return [tokenizer.vocab[text]]
-        end
-    else
-        # Mid-word, try normal variant first
-        if haskey(KNOWN_TOKENS, text)
-            return [KNOWN_TOKENS[text]]
-        elseif haskey(KNOWN_TOKENS, "Ġ" * text)
-            return [KNOWN_TOKENS["Ġ" * text]]
-        elseif haskey(tokenizer.vocab, text)
-            return [tokenizer.vocab[text]]
-        elseif haskey(tokenizer.vocab, "Ġ" * text)
-            return [tokenizer.vocab["Ġ" * text]]
-        end
-    end
-    
-    tokens = Int[]
-    i = firstindex(text)
-    last_was_space = true  # Start with true to handle first word
-    
-    while i <= lastindex(text)
-        # Skip multiple spaces
-        while i <= lastindex(text) && isspace(text[i])
-            i = nextind(text, i)
-            last_was_space = true
-        end
-        
-        if i > lastindex(text)
-            break
-        end
-        
-        # Try to find the longest matching token at current position
-        local longest_match = ""
-        local longest_id = nothing
-        local current_idx = i
-        local current_text = ""
-        local found_match = false
-        
-        # First check for special tokens at the current position
-        for (token, id) in tokenizer.special_tokens
-            if startswith(text[i:end], token)
-                longest_match = token
-                longest_id = id
-                found_match = true
-                break
-            end
-        end
-        
-        # If no special token found, try normal tokenization
-        if !found_match
-            while current_idx <= lastindex(text)
-                # Stop at space
-                if current_idx <= lastindex(text) && isspace(text[current_idx])
-                    break
-                end
-                
-                # Build up the text safely using UTF-8 aware operations
-                try
-                    next_idx = nextind(text, current_idx)
-                    current_text *= text[current_idx:prevind(text, next_idx)]
-                    current_idx = next_idx
-                catch e
-                    if e isa StringIndexError
-                        current_idx = nextind(text, current_idx)
-                        continue
-                    else
-                        rethrow(e)
-                    end
-                end
-                
-                # Try all token matching strategies in order of priority
-                
-                # 1. Check KNOWN_TOKENS first
-                if i == firstindex(text) || last_was_space
-                    # At start of text or after space, try Ġ-prefixed first
-                    if haskey(KNOWN_TOKENS, "Ġ" * current_text)
-                        longest_match = current_text
-                        longest_id = KNOWN_TOKENS["Ġ" * current_text]
-                        found_match = true
-                    elseif haskey(KNOWN_TOKENS, current_text)
-                        longest_match = current_text
-                        longest_id = KNOWN_TOKENS[current_text]
-                        found_match = true
-                    end
-                else
-                    # Mid-word, try non-prefixed first
-                    if haskey(KNOWN_TOKENS, current_text)
-                        longest_match = current_text
-                        longest_id = KNOWN_TOKENS[current_text]
-                        found_match = true
-                    elseif haskey(KNOWN_TOKENS, "Ġ" * current_text)
-                        longest_match = current_text
-                        longest_id = KNOWN_TOKENS["Ġ" * current_text]
-                        found_match = true
-                    end
-                end
-                
-                # 2. Check vocabulary
-                if !found_match
-                    if i == firstindex(text) || last_was_space
-                        # At start of text or after space, try Ġ-prefixed first
-                        if haskey(tokenizer.vocab, "Ġ" * current_text)
-                            longest_match = current_text
-                            longest_id = tokenizer.vocab["Ġ" * current_text]
-                            found_match = true
-                        elseif haskey(tokenizer.vocab, current_text)
-                            longest_match = current_text
-                            longest_id = tokenizer.vocab[current_text]
-                            found_match = true
-                        end
-                    else
-                        # Mid-word, try non-prefixed first
-                        if haskey(tokenizer.vocab, current_text)
-                            longest_match = current_text
-                            longest_id = tokenizer.vocab[current_text]
-                            found_match = true
-                        elseif haskey(tokenizer.vocab, "Ġ" * current_text)
-                            longest_match = current_text
-                            longest_id = tokenizer.vocab["Ġ" * current_text]
-                            found_match = true
-                        end
-                    end
-                end
+end
                 
                 # 3. Special handling for single-character tokens (punctuation etc.)
                 if !found_match && length(current_text) == 1
