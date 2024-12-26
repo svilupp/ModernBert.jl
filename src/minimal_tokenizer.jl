@@ -261,44 +261,6 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
     # If no match found in any variant, return UNK
     return [tokenizer.special_tokens["[UNK]"]]
 end
-                
-                # 3. Special handling for single-character tokens (punctuation etc.)
-                if !found_match && length(current_text) == 1
-                    if ispunct(current_text[1]) || current_text[1] in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}']
-                        if haskey(tokenizer.vocab, current_text)
-                            longest_match = current_text
-                            longest_id = tokenizer.vocab[current_text]
-                            found_match = true
-                        end
-                    end
-                end
-            end
-        end
-
-
-            
-        # If we found a match, use it
-        if found_match && !isempty(longest_match)
-            # Found a match, add it and advance
-            push!(tokens, longest_id)
-            # Advance the main index by the length of the matched token
-            for _ in 1:length(longest_match)
-                i = nextind(text, i)
-            end
-        else
-            # No match found or token not recognized, use [UNK] token
-            if current_idx > i  # Only add UNK if we actually tried to match something
-                push!(tokens, tokenizer.special_tokens["[UNK]"])
-            end
-            # Move to next character
-            i = nextind(text, i)
-        end
-        
-        last_was_space = false
-    end
-    
-    return tokens
-end
 
 
 
