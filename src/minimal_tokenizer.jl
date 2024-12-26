@@ -216,33 +216,33 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
         return [tokenizer.special_tokens[text]]
     end
     
-    # For completely unknown words, just return [UNK] token
-    if !any(haskey(KNOWN_TOKENS, substr) || haskey(tokenizer.vocab, substr) || haskey(tokenizer.special_tokens, substr) for substr in [text, "Ġ" * text])
-        return [tokenizer.special_tokens["[UNK]"]]
-    end
-    
-    # Handle whitespace-only text
+    # Handle whitespace-only text first
     if isempty(strip(text))
-        return [tokenizer.vocab["Ġ"]]  # Return space token (50275)
+        return [tokenizer.vocab[" "]]  # Return space token (50275)
     end
     
-    # Use module-level KNOWN_TOKENS for consistent token mappings
-    
-    # For known tokens, use their specific IDs
-    # Check both normal and Ġ-prefixed variants
-    # For first word or after space, try normal variant first
-    if (firstindex(text) == 1 || isspace(text[prevind(text, firstindex(text))]))
-        if haskey(KNOWN_TOKENS, text)
-            return [KNOWN_TOKENS[text]]
-        end
+    # For completely unknown words, check all variants before returning UNK
+    if firstindex(text) == 1 || isspace(text[prevind(text, firstindex(text))])
+        # At start or after space, check Ġ-prefixed first
+        variants = ["Ġ" * text, text]
     else
-        # For other positions, try Ġ-prefixed first
-        if haskey(KNOWN_TOKENS, "Ġ" * text)
-            return [KNOWN_TOKENS["Ġ" * text]]
-        elseif haskey(KNOWN_TOKENS, text)
-            return [KNOWN_TOKENS[text]]
+        # Mid-word, check normal variant first
+        variants = [text, "Ġ" * text]
+    end
+    
+    for variant in variants
+        if haskey(KNOWN_TOKENS, variant)
+            return [KNOWN_TOKENS[variant]]
+        elseif haskey(tokenizer.vocab, variant)
+            return [tokenizer.vocab[variant]]
+        elseif haskey(tokenizer.special_tokens, variant)
+            return [tokenizer.special_tokens[variant]]
         end
     end
+    
+    # If no match found, return UNK
+    return [tokenizer.special_tokens["[UNK]"]]
+
     
     # For single token case
     # Always check KNOWN_TOKENS first
@@ -265,15 +265,25 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
     end
 
     # For words after spaces or at start, try Ġ-prefixed first
-    if i == firstindex(text) || (i > firstindex(text) && isspace(text[prevind(text, i)]))
-        if haskey(tokenizer.vocab, "Ġ" * text)
+    if firstindex(text) == 1 || isspace(text[prevind(text, firstindex(text))])
+        # At start or after space, try Ġ-prefixed first for known tokens
+        if haskey(KNOWN_TOKENS, "Ġ" * text)
+            return [KNOWN_TOKENS["Ġ" * text]]
+        elseif haskey(KNOWN_TOKENS, text)
+            return [KNOWN_TOKENS[text]]
+        # Then try vocabulary
+        elseif haskey(tokenizer.vocab, "Ġ" * text)
             return [tokenizer.vocab["Ġ" * text]]
         elseif haskey(tokenizer.vocab, text)
             return [tokenizer.vocab[text]]
         end
     else
-        # For other positions, try normal variant first
-        if haskey(tokenizer.vocab, text)
+        # Mid-word, try normal variant first
+        if haskey(KNOWN_TOKENS, text)
+            return [KNOWN_TOKENS[text]]
+        elseif haskey(KNOWN_TOKENS, "Ġ" * text)
+            return [KNOWN_TOKENS["Ġ" * text]]
+        elseif haskey(tokenizer.vocab, text)
             return [tokenizer.vocab[text]]
         elseif haskey(tokenizer.vocab, "Ġ" * text)
             return [tokenizer.vocab["Ġ" * text]]
