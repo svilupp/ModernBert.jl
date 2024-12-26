@@ -1,52 +1,47 @@
-using ModernBert: BertModel, encode, BPETokenizer, load_tokenizer
+using Test
+using ModernBert
 
-MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
-
-# Initialize model and tokenizer
-model = BertModel(model_path = MODEL_PATH)
+# Initialize tokenizer
 vocab_path = joinpath(@__DIR__, "model", "tokenizer.json")
 @assert isfile(vocab_path) "tokenizer.json not found"
-bpe = load_tokenizer(vocab_path)
+tokenizer = load_modernbert_tokenizer(vocab_path)
 
 @testset "Vocabulary and Special Tokens" begin
     # Test vocabulary loading
-    @test length(bpe.vocab) > 0
+    vocab_size = length(tokenizer.vocab)
+    @test vocab_size > 0
+    @test vocab_size == 50288  # Expected vocabulary size
 
     # Test special tokens
     special_tokens = ["[CLS]", "[SEP]", "[MASK]", "[PAD]", "[UNK]"]
-    for token in special_tokens
-        @test haskey(bpe.special_tokens, token)
+    special_token_ids = Dict(
+        "[CLS]" => 50281,
+        "[SEP]" => 50282,
+        "[MASK]" => 50284,
+        "[PAD]" => 50283,
+        "[UNK]" => 50280
+    )
+    
+    # Test special token presence and IDs
+    for (token, expected_id) in special_token_ids
+        result = tokenize(tokenizer, token)
+        @test length(result) == 1  # Should be just the special token
+        @test result[1] == expected_id
     end
-
-    # Test special token IDs
-    @test bpe.special_tokens["[CLS]"] == 50281
-    @test bpe.special_tokens["[SEP]"] == 50282
-    @test bpe.special_tokens["[MASK]"] == 50284
-    @test bpe.special_tokens["[PAD]"] == 50283
-    @test bpe.special_tokens["[UNK]"] == 50280
 end
 
 @testset "Basic Tokenization" begin
     # Test basic sentence
     text1 = "The capital of France is [MASK]."
     expected_ids1 = [50281, 510, 5347, 273, 6181, 310, 50284, 15, 50282]
-    tokens1, _, _ = encode(model, text1)
+    tokens1, _, _ = encode(tokenizer, text1)
     @test tokens1 == expected_ids1
 
     # Test another basic sentence
     text2 = "Hello world! This is a test."
     expected_ids2 = [50281, 12092, 1533, 2, 831, 310, 247, 1071, 15, 50282]
-    tokens2, _, _ = encode(model, text2)
+    tokens2, _, _ = encode(tokenizer, text2)
     @test tokens2 == expected_ids2
-
-    ## Multiple strings
-    texts = ["Hello, world!", "This is a test.", "Multiple strings work."]
-    expected_ids = hcat(
-        [50281, 12092, 13, 1533, 2, 50282, 50283],
-        [50281, 1552, 310, 247, 1071, 15, 50282],
-        [50281, 29454, 11559, 789, 15, 50282, 50283])
-    tokens, _, _ = encode(model, texts)
-    @test tokens == expected_ids
 end
 
 mixed_text = [
@@ -112,72 +107,72 @@ expected_ids = hcat(
         2, 12480, 34773, 14, 25, 5810, 342, 48668, 310, 11132,
         15, 50282, 50283, 50283, 50283, 50283, 50283, 50283, 50283, 50283,
         50283, 50283, 50283, 50283, 50283, 50283, 50283])
-empty!(model.encoder.cache)
-tokens, _, _ = encode(model, mixed_text)
-for j in axes(tokens, 2)
+empty!(tokenizer.cache)
+tokens = encode(tokenizer, mixed_text)
+for j in axes(tokens[1], 2)
     j == 5 && continue
-    for i in axes(tokens, 1)
+    for i in axes(tokens[1], 1)
         text = mixed_text[j]
         i > size(expected_ids, 1) && continue
-        @assert tokens[i, j]==expected_ids[i, j] "Mismatch at token $i ($j: \"$(text)\"): got $(get(inv, tokens[i,j], tokens[i,j])), expected $(get(inv, expected_ids[i,j], expected_ids[i,j])), in token IDS: $(tokens[i, j]) vs $(expected_ids[i, j])"
+        @assert tokens[1][i, j]==expected_ids[i, j] "Mismatch at token $i ($j: \"$(text)\"): got $(get(tokenizer.id_to_token, tokens[1][i,j], tokens[1][i,j])), expected $(get(tokenizer.id_to_token, expected_ids[i,j], expected_ids[i,j])), in token IDS: $(tokens[1][i, j]) vs $(expected_ids[i, j])"
     end
 end
 
 hard_unicode = " × "
-tokens, _, _ = tokenize(model.encoder, hard_unicode; token_ids = false)
-@test tokens == [50281, 1331, 15, 50282]
+tokens = tokenize(tokenizer, hard_unicode)
+@test tokens == [1331, 15]
 
 @testset "Special Cases" begin
     # Test special token handling
     for token in ["[CLS]", "[SEP]", "[MASK]", "[PAD]", "[UNK]"]
-        result, _, _ = encode(model, token)
-        @test length(result) == 3
-        @test result[2] == model.encoder.vocab[token]
+        result = encode(tokenizer, token)
+        @test length(result[1]) == 3  # [CLS], special_token, [SEP]
+        @test result[1][2] == special_token_ids[token]
     end
 
     # Test sequence length handling
     long_text = repeat("very long text ", 100)
-    long_ids, long_type_ids, long_mask = encode(model, long_text)
-    @test length(long_ids) <= 512
-    @test length(long_ids) == length(long_type_ids) == length(long_mask)
+    long_result = encode(tokenizer, long_text)
+    @test size(long_result[1], 1) <= 512
+    @test size(long_result[1], 1) == size(long_result[2], 1) == size(long_result[3], 1)
 
     # Test whitespace handling
     whitespace_text = "   "
-    ws_tokens, _, _ = encode(model, whitespace_text)
-    @test ws_tokens == [50281, 50275, 50282]
+    ws_result = encode(tokenizer, whitespace_text)
+    @test ws_result[1] == [50281, 50275, 50282]
 
     # Test empty string
-    empty_tokens, _, _ = encode(model, "")
-    @test length(empty_tokens) == 2
-    @test empty_tokens[1] == model.encoder.vocab["[CLS]"]
-    @test empty_tokens[2] == model.encoder.vocab["[SEP]"]
+    empty_result = encode(tokenizer, "")
+    @test length(empty_result[1]) == 2
+    @test empty_result[1][1] == tokenizer.special_tokens["[CLS]"]
+    @test empty_result[1][2] == tokenizer.special_tokens["[SEP]"]
 end
 
 @testset "Edge Cases" begin
     # Test special characters
     special_chars = "!@#%^&*()"  # Removed $ to fix linter error
-    special_tokens = bpe(special_chars; token_ids = false)
+    special_tokens = tokenize(tokenizer, special_chars)
     @test !isempty(special_tokens)
 
     # Test Unicode
     unicode_text = "Hello 世界"
-    unicode_tokens = bpe(unicode_text; token_ids = false)
+    unicode_tokens = tokenize(tokenizer, unicode_text)
     @test !isempty(unicode_tokens)
 end
 
 @testset "Token ID Consistency" begin
     text = "The quick brown fox jumps over the lazy dog"
 
-    # Get tokens and IDs separately
-    tokens = bpe(text; token_ids = false)
-    token_ids = bpe(text; token_ids = true)
+    # Get tokens and IDs
+    token_ids = tokenize(tokenizer, text)
 
     # Manual ID lookup
+    tokens_str = tokenize(tokenizer, text; token_ids=false)
     manual_ids = Int[]
-    for token in tokens
-        id = get(bpe.special_tokens, token, nothing)
+    for token in tokens_str
+        id = get(tokenizer.special_tokens, token, nothing)
         if isnothing(id)
-            id = get(bpe.vocab, token, bpe.special_tokens["[UNK]"])
+            id = get(tokenizer.vocab, token, tokenizer.special_tokens["[UNK]"])
         end
         push!(manual_ids, id)
     end
@@ -188,16 +183,16 @@ end
 @testset "Complex Tokenization" begin
     # Test complex case with long words
     text3 = "The antidisestablishmentarianistically-minded researcher hypothesized about pseudoscientific phenomena."
-    tokens3, _, _ = encode(model, text3)
-    @test tokens3 == [50281, 510, 1331, 30861, 15425, 8922, 6656, 18260, 14, 23674,
+    result3 = encode(tokenizer, text3)
+    @test result3[1] == [50281, 510, 1331, 30861, 15425, 8922, 6656, 18260, 14, 23674,
         22780, 24045, 670, 10585, 5829, 850, 692, 16958, 15, 50282]
 
     # Test properties of complex tokenization
-    @test tokens3[1] == model.encoder.vocab["[CLS]"]
-    @test tokens3[end] == model.encoder.vocab["[SEP]"]
+    @test result3[1][1] == tokenizer.special_tokens["[CLS]"]
+    @test result3[1][end] == tokenizer.special_tokens["[SEP]"]
 
     # Test subword tokenization
     text4 = "unbelievable"
-    tokens4, _, _ = encode(model, text4)
-    @test tokens4 == [50281, 328, 21002, 17254, 50282]
+    result4 = encode(tokenizer, text4)
+    @test result4[1] == [50281, 328, 21002, 17254, 50282]
 end

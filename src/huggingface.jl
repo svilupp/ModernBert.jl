@@ -1,3 +1,9 @@
+module ModernBertHuggingFace
+
+export download_config_files
+
+using Downloads
+
 const CONFIG_FILES = [
     "config.json",
     "tokenizer.json",
@@ -51,3 +57,5 @@ function download_config_files(repo_url::String, target_dir::String)
     end
     return target_dir
 end
+
+end # module ModernBertHuggingFace

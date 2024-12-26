@@ -1,11 +1,14 @@
+# Import methods we want to extend
+import TextEncodeBase: encode, tokenize
+
 struct BertModel
     session::Any  # Use Any to accommodate ORT model type
-    encoder::BPETokenizer
+    tokenizer::ModernBertTokenizer
 end
 
 function Base.show(io::IO, model::BertModel)
     print(
-        io, "BertModel(session=$(typeof(model.session)), encoder=$(typeof(model.encoder)))")
+        io, "BertModel(session=$(typeof(model.session)), tokenizer=$(typeof(model.tokenizer)))")
 end
 
 function BertModel(;
@@ -35,21 +38,21 @@ function BertModel(;
         vocab[token_content] = token_id  # Add to main vocabulary
     end
 
-    # Create BPE tokenizer with the vocabulary and special tokens
-    encoder = load_tokenizer(vocab_path)
+    # Create ModernBert tokenizer with the vocabulary and special tokens
+    tokenizer = load_modernbert_tokenizer(vocab_path)
 
     # Initialize ONNX session with high-level API
     session = ORT.load_inference(model_path)
 
-    return BertModel(session, encoder)
+    return BertModel(session, tokenizer)
 end
 
 function encode(model::BertModel, text::AbstractString)
-    return encode(model.encoder, text)
+    return encode(model.tokenizer, text)
 end
 
 function encode(model::BertModel, texts::AbstractVector{<:AbstractString})
-    return encode(model.encoder, texts)
+    return encode(model.tokenizer, texts)
 end
 
 function mean_pooling(
@@ -114,9 +117,13 @@ end
 function embed(model::BertModel, text::AbstractString; kwargs...)
     token_ids, token_type_ids, attention_mask = encode(model, text)
 
+    # Convert to Int64 and ensure correct shape
+    token_ids_arr = Int64.(collect(token_ids))
+    attention_mask_arr = Int64.(collect(attention_mask))
+    
     inputs = Dict(
-        "input_ids" => reshape(Int64.(token_ids), :, 1),
-        "attention_mask" => reshape(Int64.(attention_mask), :, 1)
+        "input_ids" => reshape(token_ids_arr, :, 1),
+        "attention_mask" => reshape(attention_mask_arr, :, 1)
     )
 
     outputs = model.session(inputs)

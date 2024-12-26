@@ -1,0 +1,257 @@
+Block start: module at line 1
+Block start: struct at line 27
+Block start: function at line 36
+Block start: for at line 39
+Block end at line 41 (matches for from line 39)
+Block end at line 43 (matches function from line 36)
+Block end at line 44 (matches struct from line 27)
+Block start: function at line 54
+Block end at line 56 (matches function from line 54)
+Block start: function at line 58
+Block end at line 60 (matches function from line 58)
+Block start: function at line 62
+Block end at line 64 (matches function from line 62)
+Block start: function at line 66
+Block start: for at line 79
+Block start: if at line 81
+Block start: if at line 83
+Block end at line 87 (matches if from line 83)
+Block end at line 88 (matches if from line 81)
+Block start: begin at line 91
+Block start: for at line 101
+Block end at line 104 (matches for from line 101)
+Block start: for at line 110
+Block start: if at line 112
+Block end at line 116 (matches if from line 112)
+Block end at line 117 (matches for from line 110)
+Block start: for at line 120
+Block start: if at line 121
+Block end at line 123 (matches if from line 121)
+Block end at line 125 (matches for from line 120)
+Block start: begin at line 128
+Block end at line 137 (matches begin from line 128)
+Block start: if at line 140
+Block end at line 143 (matches if from line 140)
+Block start: if at line 146
+Block start: for at line 149
+Block start: if at line 150
+Block end at line 154 (matches if from line 150)
+Block end at line 155 (matches for from line 149)
+Block end at line 157 (matches if from line 146)
+Block start: for at line 161
+Block start: if at line 163
+Block end at line 168 (matches if from line 163)
+Block end at line 169 (matches for from line 161)
+Block end at line 186 (matches begin from line 91)
+Block start: function at line 188
+Block start: if at line 195
+Block end at line 197 (matches if from line 195)
+Block start: if at line 200
+Block start: for at line 206
+Block start: if at line 208
+Block end at line 211 (matches if from line 208)
+Block end at line 214 (matches for from line 206)
+Block start: if at line 215
+Block end at line 217 (matches if from line 215)
+Block start: if at line 220
+Block end at line 224 (matches if from line 220)
+Block start: if at line 227
+Block end at line 231 (matches if from line 227)
+Block end at line 232 (matches if from line 200)
+Block start: if at line 235
+Block end at line 237 (matches if from line 235)
+Block start: for at line 245
+Block start: while at line 247
+Block end at line 250 (matches while from line 247)
+Block start: if at line 256
+Block end at line 259 (matches if from line 256)
+Block start: if at line 261
+Block end at line 261 (matches if from line 261)
+Block end at line 262 (matches for from line 245)
+Block end at line 264 (matches function from line 188)
+Block start: if at line 267
+Block end at line 270 (matches if from line 267)
+Block end at line 272 (matches for from line 79)
+Block end at line 273 (matches function from line 66)
+Block start: for at line 280
+Block start: if at line 282
+Block start: if at line 284
+Block start: if at line 286
+Block end at line 291 (matches if from line 286)
+Block start: while at line 304
+Block start: if at line 307
+Block end at line 313 (matches if from line 307)
+Block end at line 314 (matches while from line 304)
+Block start: for at line 325
+Block start: if at line 327
+Block end at line 329 (matches if from line 327)
+Block end at line 330 (matches for from line 325)
+Block start: for at line 332
+Block start: if at line 338
+Block end at line 346 (matches if from line 338)
+Block start: if at line 350
+Block start: if at line 353
+Block start: if at line 355
+Block end at line 358 (matches if from line 355)
+Block end at line 359 (matches if from line 353)
+Block end at line 361 (matches if from line 350)
+Block start: if at line 367
+Block end at line 370 (matches if from line 367)
+Block start: if at line 374
+Block start: if at line 379
+Block end at line 387 (matches if from line 379)
+Block end at line 388 (matches if from line 374)
+Block start: if at line 393
+Block start: if at line 397
+Block start: if at line 401
+Block start: if at line 402
+Block end at line 402 (matches if from line 402)
+Block end at line 407 (matches if from line 401)
+Block end at line 410 (matches if from line 397)
+Block end at line 411 (matches if from line 393)
+Block end at line 413 (matches for from line 332)
+Block start: if at line 417
+Block end at line 420 (matches if from line 417)
+Block start: if at line 423
+Block start: if at line 425
+Block end at line 427 (matches if from line 425)
+Block start: if at line 428
+Block end at line 431 (matches if from line 428)
+Block end at line 432 (matches if from line 423)
+Block end at line 433 (matches if from line 284)
+Block start: if at line 439
+Block end at line 446 (matches if from line 439)
+Block end at line 451 (matches if from line 282)
+Block end at line 452 (matches for from line 280)
+Block end at line 458 (matches module from line 1)
+Block start: if at line 461
+Block end at line 465 (matches if from line 461)
+Block start: if at line 467
+Block end at line 468 (matches if from line 467)
+Block start: if at line 469
+Block start: if at line 471
+Block start: for at line 484
+Block start: if at line 487
+Block end at line 489 (matches if from line 487)
+Block end at line 490 (matches for from line 484)
+Block start: for at line 492
+Block start: if at line 500
+Block start: while at line 508
+Block end at line 508 (matches while from line 508)
+Block end at line 511 (matches if from line 500)
+Block end at line 516 (matches for from line 492)
+Block start: if at line 520
+Block start: if at line 523
+Block end at line 523 (matches if from line 523)
+Block end at line 530 (matches if from line 520)
+Block end at line 531 (matches if from line 471)
+Block start: if at line 534
+Block end at line 537 (matches if from line 534)
+Block start: if at line 542
+Block start: if at line 544
+Block start: if at line 548
+Block end at line 552 (matches if from line 548)
+Block start: if at line 555
+Block end at line 558 (matches if from line 555)
+Block end at line 559 (matches if from line 544)
+Block start: if at line 564
+Block end at line 566 (matches if from line 564)
+Block start: if at line 570
+Block start: if at line 575
+Block end at line 583 (matches if from line 575)
+Block end at line 585 (matches if from line 570)
+Block start: if at line 588
+Block start: if at line 592
+Block start: if at line 596
+Block start: if at line 597
+Block end at line 597 (matches if from line 597)
+Block end at line 602 (matches if from line 596)
+Block end at line 606 (matches if from line 592)
+Block end at line 607 (matches if from line 588)
+Block end at line 610 (matches if from line 542)
+Block end at line 614 (matches if from line 469)
+Block start: if at line 622
+Block end at line 624 (matches if from line 622)
+Block start: if at line 630
+Block start: if at line 635
+Block start: if at line 641
+Block start: if at line 647
+Block start: if at line 649
+Block end at line 662 (matches if from line 649)
+Block end at line 668 (matches if from line 647)
+Block end at line 672 (matches if from line 641)
+Block end at line 694 (matches if from line 635)
+Block end at line 705 (matches if from line 630)
+Block start: if at line 716
+Block end at line 716 (matches if from line 716)
+Block start: if at line 720
+Block end at line 720 (matches if from line 720)
+Block start: if at line 724
+Block end at line 724 (matches if from line 724)
+Block start: if at line 728
+Block start: if at line 731
+Block end at line 734 (matches if from line 731)
+Block start: if at line 736
+Block end at line 736 (matches if from line 736)
+Block end at line 741 (matches if from line 728)
+Block start: if at line 743
+Block end at line 746 (matches if from line 743)
+Block start: if at line 749
+Block end at line 753 (matches if from line 749)
+WARNING: Unmatched end at line 769
+WARNING: Unmatched end at line 771
+WARNING: Unmatched end at line 772
+WARNING: Unmatched end at line 773
+WARNING: Unmatched end at line 774
+WARNING: Unmatched end at line 775
+Block start: if at line 778
+Block end at line 781 (matches if from line 778)
+Block start: if at line 783
+Block end at line 790 (matches if from line 783)
+Block start: for at line 792
+Block start: if at line 795
+Block end at line 798 (matches if from line 795)
+Block end at line 799 (matches for from line 792)
+WARNING: Unmatched end at line 800
+WARNING: Unmatched end at line 801
+Block start: if at line 804
+Block end at line 807 (matches if from line 804)
+WARNING: Unmatched end at line 810
+WARNING: Unmatched end at line 811
+WARNING: Unmatched end at line 812
+Block start: function at line 815
+Block start: for at line 816
+Block end at line 817 (matches for from line 816)
+Block start: function at line 820
+Block start: if at line 828
+Block end at line 830 (matches if from line 828)
+Block end at line 832 (matches function from line 820)
+Block start: if at line 835
+Block end at line 836 (matches if from line 835)
+Block end at line 837 (matches function from line 815)
+WARNING: Unmatched end at line 839
+WARNING: Unmatched end at line 844
+Block start: function at line 847
+Block start: for at line 849
+Block start: for at line 852
+Block start: for at line 853
+Block start: for at line 854
+Block end at line 857 (matches for from line 854)
+Block start: function at line 860
+Block start: for at line 864
+Block start: if at line 867
+Block end at line 869 (matches if from line 867)
+Block end at line 870 (matches for from line 864)
+Block start: if at line 873
+Block end at line 873 (matches if from line 873)
+Block end at line 875 (matches function from line 860)
+Block end at line 880 (matches for from line 853)
+Block end at line 883 (matches for from line 852)
+Block start: function at line 886
+Block end at line 888 (matches function from line 886)
+Block end at line 890 (matches for from line 849)
+
+Final block count: -12
+
+Unclosed blocks:
+- function started at line 847
