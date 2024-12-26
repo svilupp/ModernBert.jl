@@ -461,20 +461,23 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 
                 # If the word ends with punctuation, try without it
                 if endswith(full_word, r"[[:punct:]]")
-                    base_word = full_word[1:prevind(full_word, findlast(ispunct, full_word))]
-                    prefixed_base = "Ġ" * base_word
-                    if haskey(KNOWN_TOKENS, prefixed_base)
-                        push!(tokens, KNOWN_TOKENS[prefixed_base])
-                        # Add the punctuation separately
-                        punct = full_word[findlast(ispunct, full_word):end]
-                        if haskey(KNOWN_TOKENS, punct)
-                            push!(tokens, KNOWN_TOKENS[punct])
-                        elseif haskey(tokenizer.vocab, punct)
-                            push!(tokens, tokenizer.vocab[punct])
+                    punct_pos = findlast(ispunct, full_word)
+                    if !isnothing(punct_pos)
+                        base_word = full_word[1:prevind(full_word, punct_pos)]
+                        prefixed_base = "Ġ" * base_word
+                        if haskey(known_tokens, prefixed_base)
+                            push!(tokens, known_tokens[prefixed_base])
+                            # Add the punctuation separately
+                            punct = full_word[punct_pos:end]
+                            if haskey(known_tokens, punct)
+                                push!(tokens, known_tokens[punct])
+                            elseif haskey(vocab, punct)
+                                push!(tokens, vocab[punct])
+                            end
+                            i = word_end
+                            last_was_space = false
+                            continue
                         end
-                        i = word_end
-                        last_was_space = false
-                        continue
                     end
                 end
                 
