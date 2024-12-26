@@ -326,8 +326,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         return [REQUIRED_TOKENS[" "]]  # Space token (50275)
     end
     
-    # Initialize result array
-    tokens = Int[]  # No need for local since this is function scope
+    # Continue with main tokenization (tokens array already initialized)
     i = firstindex(text)
     last_was_space = true  # Start with true to handle first word correctly
     
