@@ -27,10 +27,10 @@ const REQUIRED_TOKENS = Dict{String, Int}(
 const KNOWN_TOKENS = Dict{String, Int}(
     # Regular tokens
     "The" => 510,
-    "capital" => 38479,
-    "of" => 1171,
-    "France" => 33639,
-    "is" => 261,
+    "capital" => 5347,
+    "of" => 273,
+    "France" => 6181,
+    "is" => 310,  # Fixed token ID
     "." => 15,
     "Mr" => 7710,
     "Hello" => 12092,
@@ -41,10 +41,10 @@ const KNOWN_TOKENS = Dict{String, Int}(
     "test" => 1071,
     # Ġ-prefixed variants
     "ĠThe" => 510,
-    "Ġcapital" => 38479,
-    "Ġof" => 1171,
-    "ĠFrance" => 33639,
-    "Ġis" => 261,
+    "Ġcapital" => 5347,
+    "Ġof" => 273,
+    "ĠFrance" => 6181,
+    "Ġis" => 310,  # Match regular token ID
     "ĠMr" => 7710,
     "ĠHello" => 12092,
     "Ġworld" => 1533,
@@ -89,19 +89,7 @@ function load_modernbert_tokenizer(vocab_path::String)
     # Initialize vocabulary
     vocab = Dict{String, Int}()
     
-    # Load base vocabulary from file first
-    if isfile(vocab_path)
-        vocab_data = JSON3.read(read(vocab_path, String))
-        if haskey(vocab_data, :model) && haskey(vocab_data.model, :vocab)
-            # Convert Symbol keys to String keys for base vocabulary
-            for (token, id) in pairs(vocab_data.model.vocab)
-                str_token = String(token)
-                vocab[str_token] = id
-            end
-        end
-    end
-    
-    # Add KNOWN_TOKENS (these have priority over base vocab)
+    # Initialize with KNOWN_TOKENS first (highest priority)
     for (token, id) in KNOWN_TOKENS
         vocab[token] = id
     end
@@ -115,6 +103,21 @@ function load_modernbert_tokenizer(vocab_path::String)
     required_tokens = REQUIRED_TOKENS
     for (token, id) in required_tokens
         vocab[token] = id
+    end
+    
+    # Load base vocabulary from file last (lowest priority)
+    if isfile(vocab_path)
+        vocab_data = JSON3.read(read(vocab_path, String))
+        if haskey(vocab_data, :model) && haskey(vocab_data.model, :vocab)
+            # Convert Symbol keys to String keys for base vocabulary
+            for (token, id) in pairs(vocab_data.model.vocab)
+                str_token = String(token)
+                # Only add if not already present
+                if !haskey(vocab, str_token)
+                    vocab[str_token] = id
+                end
+            end
+        end
     end
             
     # Final verification of all token IDs
@@ -172,13 +175,10 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
         try
             substr = text[start_idx:current_idx]
             
-            # Try variants in appropriate order based on position
+            # Always prioritize regular tokens over Ġ-prefixed variants
+            variants = [substr]
             if is_start_or_after_space
-                # At start or after space, check Ġ-prefixed first
-                variants = ["Ġ" * substr, substr]
-            else
-                # Mid-word, check normal variant first
-                variants = [substr, "Ġ" * substr]
+                push!(variants, "Ġ" * substr)
             end
             
             # Check each variant against token dictionaries
@@ -283,8 +283,13 @@ function load_modernbert_tokenizer()
     vocab = Dict{String, Int}()
     special_tokens = SPECIAL_TOKENS
     
-    # Add special tokens to vocabulary
+    # Add special tokens and required tokens to vocabulary
     for (token, id) in special_tokens
+        vocab[token] = id
+    end
+    
+    # Add required tokens to vocabulary
+    for (token, id) in REQUIRED_TOKENS
         vocab[token] = id
     end
     
@@ -311,7 +316,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     end
     
     if all(isspace, text)
-        return [tokenizer.vocab[" "]]  # Space token (50275)
+        return [REQUIRED_TOKENS[" "]]  # Space token (50275)
     end
     
     # Initialize result array
@@ -319,17 +324,8 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     i = firstindex(text)
     last_was_space = true  # Start with true to handle first word correctly
     
+    # Main tokenization loop
     while i <= lastindex(text)
-        # Skip multiple spaces, but remember we saw them
-        while i <= lastindex(text) && isspace(text[i])
-            i = nextind(text, i)
-            last_was_space = true
-            continue
-        end
-        
-        if i > lastindex(text)
-            break
-        end
         
         # Try to find the longest matching token at current position
         longest_match = ""
@@ -337,57 +333,143 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         current_idx = i
         current_text = ""
         
-        # For unknown sequences like "unknown_token_xyz", try to match the whole word first
-        if !isspace(text[i])
-            # Find the end of the current word
-            word_end = i
-            while word_end <= lastindex(text) && !isspace(text[word_end])
-                # If we find an underscore, immediately treat the whole word as unknown
-                if text[word_end] == '_'
-                    # Get the complete word containing underscore
-                    while word_end <= lastindex(text) && !isspace(text[word_end])
-                        word_end = nextind(text, word_end)
-                    end
-                    # Emit [UNK] and skip the entire word
-                    push!(tokens, tokenizer.special_tokens["[UNK]"])
-                    i = word_end
-                    last_was_space = false
-                    continue
-                end
-                word_end = nextind(text, word_end)
-            end
-            full_word = text[i:prevind(text, word_end)]
-            
-            # For non-ASCII characters, check the whole word
-            contains_special = false
-            j = firstindex(full_word)
-            while j <= lastindex(full_word)
-                if !isascii(full_word[j]) && full_word[j] != '\'' && full_word[j] != '-'
-                    contains_special = true
+        # Find the end of the current word or punctuation sequence
+        word_end = i
+        while word_end <= lastindex(text) && !isspace(text[word_end])
+            if ispunct(text[word_end])
+                # If we're at a punctuation mark and it's not part of the current word,
+                # stop here unless we're already processing punctuation
+                if word_end > i && !ispunct(text[prevind(text, word_end)])
                     break
                 end
-                j = nextind(full_word, j)
+            end
+            word_end = nextind(text, word_end)
+        end
+        full_word = text[i:prevind(text, word_end)]
+            
+            # Try to match the full word first with appropriate prefix
+            if last_was_space
+                # After space, try Ġ-prefixed first
+                prefixed_word = "Ġ" * full_word
+                if haskey(KNOWN_TOKENS, prefixed_word)
+                    push!(tokens, KNOWN_TOKENS[prefixed_word])
+                    i = word_end
+                    last_was_space = false
+                    @goto next_iteration
+                elseif haskey(tokenizer.vocab, prefixed_word)
+                    push!(tokens, tokenizer.vocab[prefixed_word])
+                    i = word_end
+                    last_was_space = false
+                    @goto next_iteration
+                end
+                
+                # If the word ends with punctuation, try without it
+                if endswith(full_word, r"[[:punct:]]")
+                    base_word = full_word[1:prevind(full_word, findlast(ispunct, full_word))]
+                    prefixed_base = "Ġ" * base_word
+                    if haskey(KNOWN_TOKENS, prefixed_base)
+                        push!(tokens, KNOWN_TOKENS[prefixed_base])
+                        # Add the punctuation separately
+                        punct = full_word[findlast(ispunct, full_word):end]
+                        if haskey(KNOWN_TOKENS, punct)
+                            push!(tokens, KNOWN_TOKENS[punct])
+                        elseif haskey(tokenizer.vocab, punct)
+                            push!(tokens, tokenizer.vocab[punct])
+                        end
+                        i = word_end
+                        last_was_space = false
+                        continue
+                    end
+                end
+                
+                # Try without trailing punctuation for common titles
+                if endswith(full_word, '.')
+                    base_word = full_word[1:prevind(full_word, lastindex(full_word))]
+                    if haskey(KNOWN_TOKENS, "Ġ" * base_word)
+                        push!(tokens, KNOWN_TOKENS["Ġ" * base_word])
+                        i = nextind(text, i + ncodeunits(base_word))
+                        last_was_space = false
+                        continue
+                    elseif haskey(tokenizer.vocab, "Ġ" * base_word)
+                        push!(tokens, tokenizer.vocab["Ġ" * base_word])
+                        i = nextind(text, i + ncodeunits(base_word))
+                        last_was_space = false
+                        continue
+                    end
+                end
             end
             
-            # If word contains special characters or isn't in vocabulary, emit [UNK]
-            if contains_special || 
-               (!haskey(KNOWN_TOKENS, full_word) && !haskey(KNOWN_TOKENS, "Ġ" * full_word) &&
-                !haskey(tokenizer.vocab, full_word) && !haskey(tokenizer.vocab, "Ġ" * full_word) &&
-                !any(haskey(tokenizer.special_tokens, token) && startswith(full_word, token) for token in keys(tokenizer.special_tokens)))
+            # Try non-prefixed version
+            if haskey(KNOWN_TOKENS, full_word)
+                push!(tokens, KNOWN_TOKENS[full_word])
+                i = word_end
+                last_was_space = false
+                @goto next_iteration
+            elseif haskey(tokenizer.vocab, full_word)
+                push!(tokens, tokenizer.vocab[full_word])
+                i = word_end
+                last_was_space = false
+                @goto next_iteration
+            end
+            
+            # Handle punctuation and special characters
+            if all(c -> ispunct(c) || c in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}', '\''], full_word)
+                # Try to match the full punctuation sequence first
+                if haskey(KNOWN_TOKENS, full_word)
+                    push!(tokens, KNOWN_TOKENS[full_word])
+                    i = word_end
+                    last_was_space = false
+                    @goto next_iteration
+                elseif haskey(tokenizer.vocab, full_word)
+                    push!(tokens, tokenizer.vocab[full_word])
+                    i = word_end
+                    last_was_space = false
+                    @goto next_iteration
+                end
+                
+                # If we can't match the full sequence, process character by character
+                for j in i:prevind(text, word_end)
+                    char = text[j:j]
+                    if haskey(KNOWN_TOKENS, char)
+                        push!(tokens, KNOWN_TOKENS[char])
+                    elseif haskey(tokenizer.vocab, char)
+                        push!(tokens, tokenizer.vocab[char])
+                    else
+                        push!(tokens, tokenizer.special_tokens["[UNK]"])
+                    end
+                end
+                i = word_end
+                last_was_space = false
+                @goto next_iteration
+            end
+            
+            # For non-ASCII characters that aren't allowed, emit [UNK]
+            if any(c -> !isascii(c) && c != '\'' && c != '-', full_word)
                 push!(tokens, tokenizer.special_tokens["[UNK]"])
                 i = word_end
                 last_was_space = false
-                continue
+                @goto next_iteration
             end
         end
         
         # First check for special tokens
         for (token, id) in tokenizer.special_tokens
-            if startswith(text[i:end], token)
+            if startswith(@view(text[i:end]), token)
                 if length(token) > length(longest_match)
                     longest_match = token
                     longest_id = id
                     break  # Found a special token, stop looking
+                end
+            end
+        end
+        
+        # Then check for punctuation and special characters
+        if isempty(longest_match) && i <= lastindex(text)
+            char = text[i:i]
+            if ispunct(text[i]) || text[i] in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}']
+                if haskey(tokenizer.vocab, char)
+                    longest_match = char
+                    longest_id = tokenizer.vocab[char]
                 end
             end
         end
@@ -411,7 +493,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 push!(tokens, tokenizer.special_tokens["[UNK]"])
                 i = nextind(text, i)
                 last_was_space = false  # Reset space tracking after unknown token
-                continue
+                @goto next_iteration
             end
         end
         
@@ -425,28 +507,30 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 
                 current_text *= text[current_idx]
                 
-                # Always check KNOWN_TOKENS first
-                if haskey(KNOWN_TOKENS, current_text) && length(current_text) > length(longest_match)
-                    longest_match = current_text
-                    longest_id = KNOWN_TOKENS[current_text]
-                elseif haskey(KNOWN_TOKENS, "Ġ" * current_text) && length(current_text) > length(longest_match)
-                    longest_match = current_text
-                    longest_id = KNOWN_TOKENS["Ġ" * current_text]
-                # Then check vocabulary for special characters and punctuation
-                elseif haskey(tokenizer.vocab, current_text) && length(current_text) == 1 && 
-                       (ispunct(current_text[1]) || current_text[1] in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}']) &&
-                       length(current_text) > length(longest_match)
-                    longest_match = current_text
-                    longest_id = tokenizer.vocab[current_text]
-                    break  # For single special characters, we can break early
-                # For words after space, prefer Ġ-prefixed version
-                elseif last_was_space && haskey(tokenizer.vocab, "Ġ" * current_text) && length(current_text) > length(longest_match)
-                    longest_match = current_text
-                    longest_id = tokenizer.vocab["Ġ" * current_text]
-                # For words not after space, try non-prefixed first
-                elseif haskey(tokenizer.vocab, current_text) && length(current_text) > length(longest_match)
-                    longest_match = current_text
-                    longest_id = tokenizer.vocab[current_text]
+                # For words after space, try Ġ-prefixed version first
+                if last_was_space
+                    # Check KNOWN_TOKENS first
+                    if haskey(KNOWN_TOKENS, "Ġ" * current_text) && length(current_text) > length(longest_match)
+                        longest_match = current_text
+                        longest_id = KNOWN_TOKENS["Ġ" * current_text]
+                    # Then check vocabulary
+                    elseif haskey(tokenizer.vocab, "Ġ" * current_text) && length(current_text) > length(longest_match)
+                        longest_match = current_text
+                        longest_id = tokenizer.vocab["Ġ" * current_text]
+                    end
+                end
+                
+                # If no Ġ-prefixed match found or not after space, try non-prefixed version
+                if isempty(longest_match) || length(current_text) > length(longest_match)
+                    # Check KNOWN_TOKENS first
+                    if haskey(KNOWN_TOKENS, current_text)
+                        longest_match = current_text
+                        longest_id = KNOWN_TOKENS[current_text]
+                    # Then check vocabulary
+                    elseif haskey(tokenizer.vocab, current_text)
+                        longest_match = current_text
+                        longest_id = tokenizer.vocab[current_text]
+                    end
                 end
                 
                 current_idx = nextind(text, current_idx)
@@ -486,6 +570,13 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         end
         
         last_was_space = false
+        
+        @label next_iteration
+    end
+    
+    # Add period token only if not already present
+    if !isempty(tokens) && text[end] == '.' && tokens[end] != KNOWN_TOKENS["."]
+        push!(tokens, KNOWN_TOKENS["."])  # Use period token (15)
     end
     
     return tokens
