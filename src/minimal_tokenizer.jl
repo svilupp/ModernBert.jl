@@ -298,12 +298,15 @@ end
 
 # Basic tokenization function
 function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true)
-    # Initialize tokens array
+    # Initialize tokens array at the start
     tokens = Int[]
     
-    # Handle special cases
+    # Handle empty text case early
     if isempty(text)
         return tokens
+    end
+    
+    # Handle special cases
     end
     
     # Check KNOWN_TOKENS first for exact matches
@@ -597,7 +600,7 @@ end
 # Define encode methods for ModernBertTokenizer
 function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractString)
     # Initialize tokens array and add CLS token at start
-    local tokens = Int[tokenizer.special_tokens["[CLS]"]]
+    tokens = Int[tokenizer.special_tokens["[CLS]"]]
     
     # Handle empty string case
     if isempty(text)
