@@ -198,13 +198,16 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
                 end
             end
             
-            # Move to next character safely
-            current_idx = nextind(text, current_idx)
+            # Move to next character safely with bounds check
+            next_idx = nextind(text, current_idx)
+            if next_idx > lastindex(text)
+                break
+            end
+            current_idx = next_idx
         catch e
-            if e isa StringIndexError
-                # Skip invalid index and continue
-                current_idx = nextind(text, current_idx)
-                continue
+            if e isa StringIndexError || e isa BoundsError
+                # Exit loop on any string indexing error
+                break
             else
                 rethrow(e)
             end
@@ -332,26 +335,50 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     i = firstindex(text)
     last_was_space = true  # Start with true to handle first word correctly
     
-    # Main tokenization loop
+    # Main tokenization loop with safe string indexing
     while i <= lastindex(text)
+        @label next_iteration
         
-        # Try to find the longest matching token at current position
+        # Reset state at start of iteration
         longest_match = ""
         longest_id = nothing
         current_idx = i
         current_text = ""
         
-        # Find the end of the current word or punctuation sequence
+        # Handle whitespace immediately
+        if i <= lastindex(text) && isspace(text[i])
+            i = nextind(text, i)
+            last_was_space = true
+            continue
+        end
+        
+        # Find the end of the current word or punctuation sequence safely
         word_end = i
-        while word_end <= lastindex(text) && !isspace(text[word_end])
-            if ispunct(text[word_end])
+        while word_end <= lastindex(text)
+            # Get current character safely
+            curr_char = text[word_end]
+            if isspace(curr_char)
+                break
+            end
+            
+            # Handle punctuation boundaries
+            if ispunct(curr_char)
                 # If we're at a punctuation mark and it's not part of the current word,
                 # stop here unless we're already processing punctuation
-                if word_end > i && !ispunct(text[prevind(text, word_end)])
-                    break
+                if word_end > i && word_end > firstindex(text)
+                    prev_char = text[prevind(text, word_end)]
+                    if !ispunct(prev_char)
+                        break
+                    end
                 end
             end
-            word_end = nextind(text, word_end)
+            
+            # Safely advance to next character
+            next_end = nextind(text, word_end)
+            if next_end > lastindex(text)
+                break
+            end
+            word_end = next_end
         end
         full_word = text[i:prevind(text, word_end)]
             
@@ -363,7 +390,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                     push!(tokens, KNOWN_TOKENS[prefixed_word])
                     i = word_end
                     last_was_space = false
-                    @goto next_iteration
+                    continue  # Return to start of loop
                 elseif haskey(tokenizer.vocab, prefixed_word)
                     push!(tokens, tokenizer.vocab[prefixed_word])
                     i = word_end
@@ -412,12 +439,12 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 push!(tokens, KNOWN_TOKENS[full_word])
                 i = word_end
                 last_was_space = false
-                @goto next_iteration
+                continue  # Return to start of loop
             elseif haskey(tokenizer.vocab, full_word)
                 push!(tokens, tokenizer.vocab[full_word])
                 i = word_end
                 last_was_space = false
-                @goto next_iteration
+                continue  # Return to start of loop
             end
             
             # Handle punctuation and special characters
@@ -427,12 +454,12 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                     push!(tokens, KNOWN_TOKENS[full_word])
                     i = word_end
                     last_was_space = false
-                    @goto next_iteration
+                    continue  # Return to start of loop
                 elseif haskey(tokenizer.vocab, full_word)
                     push!(tokens, tokenizer.vocab[full_word])
                     i = word_end
                     last_was_space = false
-                    @goto next_iteration
+                    continue  # Return to start of loop
                 end
                 
                 # If we can't match the full sequence, process character by character
@@ -448,7 +475,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 end
                 i = word_end
                 last_was_space = false
-                @goto next_iteration
+                continue  # Return to start of loop
             end
             
             # For non-ASCII characters that aren't allowed, emit [UNK]
@@ -456,7 +483,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 push!(tokens, tokenizer.special_tokens["[UNK]"])
                 i = word_end
                 last_was_space = false
-                @goto next_iteration
+                continue  # Return to start of loop
             end
             
             # First check for special tokens
@@ -500,7 +527,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 push!(tokens, tokenizer.special_tokens["[UNK]"])
                 i = nextind(text, i)
                 last_was_space = false  # Reset space tracking after unknown token
-                @goto next_iteration
+                continue  # Return to start of loop
             end
         end
         
@@ -576,12 +603,9 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
             last_was_space = false  # Reset space tracking after unknown token
         end
         
-        last_was_space = false
-        
-        @label next_iteration
-        # Reset space tracking after token processing
-        # Check if we can safely look at the previous character
+        # Update space tracking for next iteration
         last_was_space = i == firstindex(text) || (i > firstindex(text) && isspace(text[prevind(text, i)]))
+        continue  # Go back to start of loop via @label next_iteration
     end
     
     # Add period token only if not already present and text ends with period
