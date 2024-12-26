@@ -308,17 +308,48 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     # Initialize tokens array and handle special cases
     local tokens = Int[]
     
+    # Debug output
+    println("Starting tokenization of: \"$text\"")
+    
     # Early returns for special cases
     if isempty(text)
+        println("Empty text, returning empty tokens array")
         return tokens
     elseif all(isspace, text)
-        return [REQUIRED_TOKENS[" "]]  # Space token (50275)
+        println("Text contains only whitespace")
+        # Handle whitespace tokens (50275)
+        if haskey(tokenizer.known_tokens, "Ġ")
+            println("Found space token 'Ġ' in known_tokens")
+            return [tokenizer.known_tokens["Ġ"]]
+        elseif haskey(tokenizer.vocab, "Ġ")
+            println("Found space token 'Ġ' in vocab")
+            return [tokenizer.vocab["Ġ"]]
+        elseif haskey(tokenizer.known_tokens, " ")
+            println("Found space token ' ' in known_tokens")
+            return [tokenizer.known_tokens[" "]]
+        elseif haskey(tokenizer.vocab, " ")
+            println("Found space token ' ' in vocab")
+            return [tokenizer.vocab[" "]]
+        else
+            println("Warning: Space token not found in any dictionary")
+            println("known_tokens keys: ", join(keys(tokenizer.known_tokens), ", "))
+            println("vocab keys starting with space: ", join(filter(k -> startswith(k, " ") || startswith(k, "Ġ"), keys(tokenizer.vocab)), ", "))
+            return tokens
+        end
     end
     
     # Cache commonly used dictionaries for faster lookups
-    known_tokens = KNOWN_TOKENS
+    known_tokens = tokenizer.known_tokens
     special_tokens = tokenizer.special_tokens
     vocab = tokenizer.vocab
+    
+    # Debug dictionary sizes
+    println("Dictionary sizes - Known tokens: $(length(known_tokens)), Vocab: $(length(vocab))")
+    
+    # Ensure known_tokens is initialized
+    if isnothing(known_tokens)
+        known_tokens = KNOWN_TOKENS
+    end
     
     # Check for exact matches in order of priority
     if haskey(known_tokens, text)
@@ -362,8 +393,22 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         in_punctuation = false
         
         # Process characters until we hit a boundary
+        boundary_check_count = 0
         while word_end <= text_length
+            boundary_check_count += 1
+            if boundary_check_count > 1000  # Safety limit
+                @warn "Word boundary check limit exceeded"
+                break
+            end
+            
+            # Safety check for empty strings
+            if i > word_end
+                println("  Invalid indices detected: i=$i, word_end=$word_end")
+                break
+            end
+            
             curr_char = text[word_end]
+            println("  Checking boundary at position $word_end: \"$curr_char\"")
             
             # Stop at whitespace
             if isspace(curr_char)
@@ -379,14 +424,24 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
             
             # Advance to next character
             next_end = nextind(text, word_end)
-            if next_end > text_length
+            if next_end > text_length || next_end <= word_end  # Added check for invalid advancement
                 break
             end
             word_end = next_end
         end
         
         # Extract word safely
+        if i >= word_end
+            println("  Skipping empty word at position $i")
+            i = nextind(text, i)  # Advance to next character
+            continue
+        end
         full_word = text[i:prevind(text, word_end)]
+        if isempty(full_word)
+            println("  Skipping empty word")
+            i = nextind(text, i)  # Advance to next character
+            continue
+        end
             
             # Try to match the full word with cached dictionaries
             if last_was_space
@@ -469,18 +524,30 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 end
                 
                 # If we can't match the full sequence, process character by character
+                println("  Processing characters individually for: \"$full_word\"")
+                char_count = 0
                 for j in i:prevind(text, word_end)
                     char = text[j:j]
+                    println("    Processing character: \"$char\"")
                     if haskey(KNOWN_TOKENS, char)
+                        println("    Found in KNOWN_TOKENS")
                         push!(tokens, KNOWN_TOKENS[char])
                     elseif haskey(tokenizer.vocab, char)
+                        println("    Found in vocab")
                         push!(tokens, tokenizer.vocab[char])
                     else
+                        println("    Using [UNK] token")
                         push!(tokens, tokenizer.special_tokens["[UNK]"])
+                    end
+                    char_count += 1
+                    if char_count > 100  # Safety limit
+                        @warn "Character processing limit exceeded"
+                        break
                     end
                 end
                 i = word_end
                 last_was_space = false
+                println("  Finished processing characters")
                 continue  # Return to start of loop
             end
             
@@ -673,6 +740,15 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{Str
     types_matrix = zeros(Int, max_len, n_texts)
     mask_matrix = zeros(Int, max_len, n_texts)
     
+    # Fill arrays with actual values
+    for (j, result) in enumerate(results)
+        tokens, types, mask = result
+        len = length(tokens)
+        tokens_matrix[1:len, j] = tokens
+        types_matrix[1:len, j] = types
+        mask_matrix[1:len, j] = mask
+    end
+    
     # Fill matrices
     for (j, (tokens, types, mask)) in enumerate(results)
         len = min(length(tokens), max_len)
@@ -681,6 +757,8 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{Str
         mask_matrix[1:len, j] = mask[1:len]
     end
     
+    # Ensure all dimensions match
+    @assert size(tokens_matrix) == size(types_matrix) == size(mask_matrix) "Matrix dimensions must match"
     return tokens_matrix, types_matrix, mask_matrix
 end
 
