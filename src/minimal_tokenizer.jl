@@ -60,6 +60,7 @@ export ModernBertTokenizer, tokenize, encode, load_modernbert_tokenizer, vocab_s
 mutable struct ModernBertTokenizer <: AbstractTokenizer
     vocab::Dict{String, Int}
     special_tokens::Dict{String, Int}
+    known_tokens::Dict{String, Int}  # Known token mappings with specific IDs
     tokenizer::Union{AbstractTokenizer, Nothing}  # Self-reference for TextEncodeBase compatibility
     cache::Dict{String, Vector{Int}}  # Cache for tokenization results
     id_to_token::Dict{Int, String}  # Reverse mapping for debugging
@@ -74,8 +75,11 @@ mutable struct ModernBertTokenizer <: AbstractTokenizer
             id_to_token[id] = token
         end
         
+        # Initialize known tokens from module constant
+        known_tokens = copy(KNOWN_TOKENS)
+        
         # Create instance with all fields except self-reference
-        instance = new(vocab, special_tokens, nothing, Dict{String, Vector{Int}}(), id_to_token)
+        instance = new(vocab, special_tokens, known_tokens, nothing, Dict{String, Vector{Int}}(), id_to_token)
         instance.tokenizer = instance  # Set self-reference after construction
         return instance
     end
@@ -183,10 +187,10 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
             
             # Check each variant against token dictionaries
             for variant in variants
-                # Check KNOWN_TOKENS first (highest priority)
-                if haskey(KNOWN_TOKENS, variant)
+                # Check known_tokens first (highest priority)
+                if haskey(tokenizer.known_tokens, variant)
                     longest_match = substr
-                    longest_id = KNOWN_TOKENS[variant]
+                    longest_id = tokenizer.known_tokens[variant]
                     break
                 end
                 
@@ -245,9 +249,9 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
     
     # Check each variant against all token dictionaries
     for variant in variants
-        # Check KNOWN_TOKENS first (highest priority)
-        if haskey(KNOWN_TOKENS, variant)
-            return [KNOWN_TOKENS[variant]]
+        # Check known_tokens first (highest priority)
+        if haskey(tokenizer.known_tokens, variant)
+            return [tokenizer.known_tokens[variant]]
         end
         
         # Then check main vocabulary
