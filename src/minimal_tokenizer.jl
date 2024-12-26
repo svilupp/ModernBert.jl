@@ -299,12 +299,14 @@ end
 # Basic tokenization function
 function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true)
     # Initialize tokens array at the start
-    tokens = Int[]
+    local tokens = Int[]
     
-    # Handle empty text case early
+    # Early return for empty text
     if isempty(text)
         return tokens
     end
+    
+    # Empty text case already handled above
     
     # Handle special cases
     
@@ -456,29 +458,28 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 last_was_space = false
                 @goto next_iteration
             end
-        end
-        
-        # First check for special tokens
-        for (token, id) in tokenizer.special_tokens
-            if startswith(@view(text[i:end]), token)
-                if length(token) > length(longest_match)
-                    longest_match = token
-                    longest_id = id
-                    break  # Found a special token, stop looking
+            
+            # First check for special tokens
+            for (token, id) in tokenizer.special_tokens
+                if startswith(@view(text[i:end]), token)
+                    if length(token) > length(longest_match)
+                        longest_match = token
+                        longest_id = id
+                        break  # Found a special token, stop looking
+                    end
                 end
             end
-        end
         
-        # Then check for punctuation and special characters
-        if isempty(longest_match) && i <= lastindex(text)
-            char = text[i:i]
-            if ispunct(text[i]) || text[i] in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}']
-                if haskey(tokenizer.vocab, char)
-                    longest_match = char
-                    longest_id = tokenizer.vocab[char]
+            # Then check for punctuation and special characters
+            if isempty(longest_match) && i <= lastindex(text)
+                char = text[i:i]
+                if ispunct(text[i]) || text[i] in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}']
+                    if haskey(tokenizer.vocab, char)
+                        longest_match = char
+                        longest_id = tokenizer.vocab[char]
+                    end
                 end
             end
-        end
         
         # If no special token found, check if the current character is unknown
         if isempty(longest_match)
@@ -578,21 +579,22 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         last_was_space = false
         
         @label next_iteration
+        # Reset space tracking after token processing
+        # Check if we can safely look at the previous character
+        last_was_space = i == firstindex(text) || (i > firstindex(text) && isspace(text[prevind(text, i)]))
     end
     
     # Add period token only if not already present and text ends with period
-    if !isempty(tokens) && !isempty(text) && text[end] == '.'
-        if tokens[end] != KNOWN_TOKENS["."]
-            push!(tokens, KNOWN_TOKENS["."])  # Use period token (15)
-        end
+    if !isempty(text) && text[end] == '.' && !isempty(tokens) && tokens[end] != KNOWN_TOKENS["."]
+        push!(tokens, KNOWN_TOKENS["."])  # Use period token (15)
     end
     
     return tokens
 end
 
 # Add method for Vector{String}
-function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, texts::Vector{String})
-    return [tokenize(tokenizer, text) for text in texts]
+function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, texts::Vector{String}; token_ids::Bool=true)
+    return [tokenize(tokenizer, text; token_ids=token_ids) for text in texts]
 end
 
 # Define encode methods for ModernBertTokenizer
