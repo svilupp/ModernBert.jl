@@ -303,6 +303,9 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         return Int[]
     end
     
+    # Initialize tokens array
+    tokens = Int[]
+    
     # Check KNOWN_TOKENS first for exact matches
     if haskey(KNOWN_TOKENS, text)
         return [KNOWN_TOKENS[text]]
