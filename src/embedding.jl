@@ -1,6 +1,3 @@
-# Import methods we want to extend
-import TextEncodeBase: encode, tokenize
-
 struct BertModel
     session::Any  # Use Any to accommodate ORT model type
     tokenizer::ModernBertTokenizer
@@ -39,7 +36,7 @@ function BertModel(;
     end
 
     # Create ModernBert tokenizer with the vocabulary and special tokens
-    tokenizer = load_modernbert_tokenizer(vocab_path)
+    tokenizer = ModernBertTokenizer(vocab_path)
 
     # Initialize ONNX session with high-level API
     session = ORT.load_inference(model_path)
@@ -47,11 +44,11 @@ function BertModel(;
     return BertModel(session, tokenizer)
 end
 
-function encode(model::BertModel, text::AbstractString)
+function TextEncodeBase.encode(model::BertModel, text::AbstractString)
     return encode(model.tokenizer, text)
 end
 
-function encode(model::BertModel, texts::AbstractVector{<:AbstractString})
+function TextEncodeBase.encode(model::BertModel, texts::AbstractVector{<:AbstractString})
     return encode(model.tokenizer, texts)
 end
 
@@ -120,7 +117,7 @@ function embed(model::BertModel, text::AbstractString; kwargs...)
     # Convert to Int64 and ensure correct shape
     token_ids_arr = Int64.(collect(token_ids))
     attention_mask_arr = Int64.(collect(attention_mask))
-    
+
     inputs = Dict(
         "input_ids" => reshape(token_ids_arr, :, 1),
         "attention_mask" => reshape(attention_mask_arr, :, 1)

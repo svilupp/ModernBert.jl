@@ -1,9 +1,3 @@
-module ModernBertHuggingFace
-
-export download_config_files
-
-using Downloads
-
 const CONFIG_FILES = [
     "config.json",
     "tokenizer.json",
@@ -51,11 +45,9 @@ function download_config_files(repo_url::String, target_dir::String)
     catch e
         # Clean up any partially downloaded files
         for file in downloaded_files
-            rm(file, force=true)
+            rm(file, force = true)
         end
         rethrow(e)
     end
     return target_dir
 end
-
-end # module ModernBertHuggingFace

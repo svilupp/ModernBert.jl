@@ -1,250 +1,369 @@
-module ModernBertTokenizerImpl
-
-export ModernBertTokenizer, load_modernbert_tokenizer, tokenize, encode
-
-using Unicode
-using TextEncodeBase
-using BytePairEncoding
-using JSON3
-
-import TextEncodeBase: encode, tokenize, FlatTokenizer, CodeNormalizer, Sentence, getvalue
-import BytePairEncoding: BPE, GPT2Tokenization, BPETokenization, gpt2_codemap
-
-# Special token IDs that must be preserved exactly
-const SPECIAL_TOKEN_IDS = Dict{String, Int}(
+# Define module-level constants
+const DEFAULT_SPECIAL_TOKENS = Dict{String, Int}(
+    "[UNK]" => 50280,
     "[CLS]" => 50281,
     "[SEP]" => 50282,
-    "[MASK]" => 50284,
     "[PAD]" => 50283,
-    "[UNK]" => 50280,
-    # Additional padding tokens to complete vocabulary
-    "[PAD1]" => 50285,
-    "[PAD2]" => 50286,
-    "[PAD3]" => 50287
+    "[MASK]" => 50284,
+    " " => 50273,      # Space token
+    "  " => 50274,     # Double space token
+    "   " => 50275,    # Triple space token
+    "\n" => 50286,     # Newline token
+    "\t" => 50287      # Tab token
 )
 
-# Basic tokenizer structure
+# Define punctuation characters
+const PUNCTUATION = Set(['[', ']', '.', ',', '!', '?', '-', '@', '{', '}', '\''])
+
+"""
+    ModernBertTokenizer
+
+A tokenizer implementation that combines BytePairEncoding with special token handling.
+"""
 mutable struct ModernBertTokenizer
-    tokenizer::FlatTokenizer
+    tokenizer::Any  # BytePairEncoding tokenizer
     vocab::Dict{String, Int}
-    id_to_token::Dict{Int, String}
     special_tokens::Dict{String, Int}
+    id_to_token::Dict{Int, String}
     cache::Dict{String, Vector{Int}}
 end
 
-function load_modernbert_tokenizer(config_path::String)
-    @assert isfile(config_path) "Tokenizer configuration file not found: $config_path"
-    
-    # Load configuration
-    config = JSON3.read(read(config_path, String))
-    
-    # Create vocabulary mappings
-    vocab = Dict{String, Int}()
-    id_to_token = Dict{Int, String}()
-    
-    # Add special tokens first to ensure exact IDs
-    for (token, id) in SPECIAL_TOKEN_IDS
-        vocab[token] = id
-        id_to_token[id] = token
+"""
+    add_special_tokens(tokenizer::ModernBertTokenizer)
+
+Add special tokens to the tokenizer's vocabulary and special_tokens dictionaries.
+"""
+function add_special_tokens(tokenizer::ModernBertTokenizer)
+    # Update tokenizer's special_tokens dictionary with module-level constants
+    tokenizer.special_tokens = DEFAULT_SPECIAL_TOKENS
+
+    # Add special tokens to vocabulary if not present
+    for (token, id) in DEFAULT_SPECIAL_TOKENS
+        tokenizer.vocab[token] = id
+        tokenizer.id_to_token[id] = token
     end
-    
-    # Add special tokens first to ensure exact IDs
-    for (token, id) in SPECIAL_TOKEN_IDS
-        vocab[token] = id
-        id_to_token[id] = token
-    end
-    
-    # Add vocabulary from config
-    for (token, id) in config.model.vocab
-        token = String(token)
-        # Skip if token is already in vocab (special tokens)
-        if !haskey(vocab, token)
-            vocab[token] = id
-            id_to_token[id] = token
-        end
-    end
-    
-    # Create merge rules
-    merges = Dict{NTuple{2, BytePairEncoding.Merge}, Int}()
-    for (i, merge_rule) in enumerate(config.model.merges)
-        parts = split(String(merge_rule))
-        if length(parts) == 2
-            merge_pair = (BytePairEncoding.Merge(parts[1]), BytePairEncoding.Merge(parts[2]))
-            merges[merge_pair] = i
-        end
-    end
-    
-    # Create tokenizer pipeline following BytePairEncoding.jl's approach
-    base_tokenizer = GPT2Tokenization()  # Handles byte-level pre-tokenization
-    bpe = BPE(merges)  # BPE with merge rules
-    
-    # Create tokenizer pipeline with special token handling
-    base_tkr = BPETokenization(base_tokenizer, bpe)
-    normalized_tkr = TextEncodeBase.CodeNormalizer(base_tkr, gpt2_codemap())
-    tokenizer = FlatTokenizer(normalized_tkr)
-    
-    # Initialize with empty cache
-    ModernBertTokenizer(tokenizer, vocab, id_to_token, SPECIAL_TOKEN_IDS, Dict{String, Vector{Int}}())
+
+    return tokenizer
 end
 
+"""
+    ModernBertTokenizer(config_path::String)
 
+Create a ModernBertTokenizer from a configuration file.
+"""
+function ModernBertTokenizer(config_path::String)
+    @assert isfile(config_path) "Config file not found at $config_path"
+    config = JSON3.read(read(config_path, String))
 
-function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true, add_special_tokens::Bool=false)
-    # Handle empty text
-    if isempty(text)
-        if add_special_tokens
-            return token_ids ? 
-                [tokenizer.special_tokens["[CLS]"], tokenizer.special_tokens["[SEP]"]] :
-                ["[CLS]", "[SEP]"]
-        else
-            return token_ids ? Int[] : String[]
+    # Use module-level special tokens mapping
+    special_tokens = copy(DEFAULT_SPECIAL_TOKENS)
+
+    # Create vocabulary mapping directly from config
+    vocab = Dict{String, Int}()
+
+    # Load vocabulary with exact GPT2 token mappings
+    for (token, id) in config.model.vocab
+        token_str = String(token)
+        token_id = parse(Int, string(id))
+        # Store token exactly as in GPT2 vocabulary
+        vocab[token_str] = token_id
+
+        # For prefixed tokens, also store non-prefixed version as fallback
+        if startswith(token_str, 'Ġ')
+            base_token = token_str[nextind(token_str, 1):end]
+            if !haskey(vocab, base_token)
+                vocab[base_token] = token_id
+            end
         end
     end
-    
-    # Handle special tokens directly
-    if haskey(tokenizer.special_tokens, text)
-        return token_ids ? [tokenizer.special_tokens[text]] : [text]
+
+    # Then add special tokens, overwriting any conflicts
+    for (token, id) in special_tokens
+        vocab[token] = id
     end
-    
-    # Check cache for exact match
-    cache_key = "$(text)_$(add_special_tokens)"
-    if token_ids && haskey(tokenizer.cache, cache_key)
-        return copy(tokenizer.cache[cache_key])
+
+    # Initialize GPT2 tokenizer with proper configuration
+    bpe_merges = Dict{Tuple{Merge, Merge}, Int}()
+    for (i, merge_entry) in enumerate(config.model.merges)
+        merge_str = string(merge_entry)
+        # Use BytePairEncoding's built-in parser
+        try
+            pair = parse_merge(merge_str)
+            bpe_merges[pair] = i
+        catch e
+            # Skip invalid merge rules
+            @warn "Skipping invalid merge rule: $merge_str"
+        end
     end
-    
-    # Process text
+
+    # Create tokenizer following BytePairEncoding.jl's test_bbpe.jl example
+    # Initialize base BPE with merges
+    base_tokenizer = BPE(bpe_merges)
+
+    # Create tokenizer pipeline exactly as in test_bbpe.jl
+    tokenizer = FlatTokenizer(
+        CodeNormalizer(
+        BPETokenization(
+            GPT2Tokenization(),  # Use default GPT2Tokenization
+            base_tokenizer       # BPE with loaded merges
+        ),
+        gpt2_codemap()          # Use default GPT2 codemap
+    )
+    )
+
+    # Create reverse mapping for id_to_token
+    id_to_token = Dict{Int, String}()
+    for (token, id) in vocab
+        id_to_token[id] = token
+    end
+    for (token, id) in special_tokens
+        id_to_token[id] = token
+    end
+
+    ModernBertTokenizer(
+        tokenizer, vocab, special_tokens, id_to_token, Dict{String, Vector{Int}}())
+end
+
+function tokenize(tokenizer::ModernBertTokenizer, text::String;
+        token_ids::Bool = true, include_special_tokens::Bool = true)
+    # Initialize result array
     result = token_ids ? Int[] : String[]
-    
-    # Add [CLS] if needed
-    if add_special_tokens
+
+    # Add CLS token if requested
+    if include_special_tokens
         if token_ids
             push!(result, tokenizer.special_tokens["[CLS]"])
         else
             push!(result, "[CLS]")
         end
     end
-    
-    # Split text into parts, preserving special tokens
-    parts = String[]
-    current = ""
-    i = firstindex(text)
-    
-    while i <= lastindex(text)
-        # Check for special tokens
-        found_special = false
-        for special_token in sort(collect(keys(tokenizer.special_tokens)), by=length, rev=true)
-            token_length = length(special_token)
-            end_idx = i
-            valid_match = true
-            
-            # Use nextind to safely traverse the string
-            for _ in 1:token_length-1
-                if end_idx > lastindex(text)
-                    valid_match = false
-                    break
-                end
-                end_idx = nextind(text, end_idx)
-            end
-            
-            if valid_match && end_idx <= lastindex(text)
-                potential_match = text[i:end_idx]
-                if potential_match == special_token
-                    # Add accumulated text if any
-                    if !isempty(current)
-                        push!(parts, current)
-                        current = ""
-                    end
-                    # Add the special token
-                    push!(parts, special_token)
-                    i = nextind(text, end_idx)
-                    found_special = true
-                    break
-                end
-            end
-        end
-        
-        if !found_special
-            current *= text[i]
-            i = nextind(text, i)
-        end
-    end
-    
-    # Add any remaining text
-    if !isempty(current)
-        push!(parts, current)
-    end
-    
-    # Process each part
-    for part in parts
-        if haskey(tokenizer.special_tokens, part)
-            # Handle special tokens directly
-            if token_ids
-                push!(result, tokenizer.special_tokens[part])
-            else
-                push!(result, part)
-            end
+
+    # Handle special case when text is exactly a special token
+    if haskey(tokenizer.special_tokens, text)
+        if token_ids
+            push!(result, tokenizer.special_tokens[text])
         else
-            # Skip empty parts
-            isempty(strip(part)) && continue
-            
-            # Tokenize non-special text
-            sentence = Sentence(part)
-            tokens = tokenizer.tokenizer(sentence)
-            
-            for token in tokens
-                token_str = String(getvalue(token))
+            push!(result, text)
+        end
+    else
+        # Pre-process text to handle special tokens
+        parts = String[]
+        current_text = text
+
+        # Process special tokens directly without creating temporary dictionary
+        # This avoids unnecessary allocations and dictionary operations
+        for token in ("[MASK]", "[SEP]", "[CLS]", "[PAD]", "[UNK]")
+            current_text = replace(current_text, token => token)
+        end
+
+        # Split text into parts while preserving special tokens
+        parts = String[]
+        current_pos = 1
+        text_length = length(current_text)
+
+        while current_pos <= text_length
+            # Find the next special token more efficiently
+            next_special = nothing
+            next_pos = text_length + 1
+
+            # Direct iteration over special tokens without dictionary lookup
+            for token in ("[MASK]", "[SEP]", "[CLS]", "[PAD]", "[UNK]")
+                pos = findnext(token, current_text, current_pos)
+                if !isnothing(pos) && pos.start < next_pos
+                    next_special = (token, token, pos)
+                    next_pos = pos.start
+                end
+            end
+
+            if !isnothing(next_special)
+                token, placeholder, pos = next_special
+                # Add text before special token if any
+                if pos.start > current_pos
+                    push!(parts, current_text[current_pos:prevind(current_text, pos.start)])
+                end
+                # Add the original special token
+                push!(parts, token)
+                current_pos = pos.start + length(placeholder)
+            else
+                # Add remaining text
+                push!(parts, current_text[current_pos:end])
+                break
+            end
+        end
+
+        # If no parts were added, use the entire text
+        if isempty(parts)
+            push!(parts, current_text)
+        end
+
+        # Process each part
+        for (i, part) in enumerate(parts)
+            # Check if part is a special token
+            original_token = nothing
+            if haskey(tokenizer.special_tokens, part)
+                original_token = part
+            end
+
+            if !isnothing(original_token)
+                # Handle special tokens
                 if token_ids
-                    # Look up token ID, fallback to UNK
-                    token_id = get(tokenizer.vocab, token_str, tokenizer.special_tokens["[UNK]"])
-                    push!(result, token_id)
+                    push!(result, tokenizer.special_tokens[original_token])
                 else
-                    push!(result, token_str)
+                    push!(result, original_token)
+                end
+            else
+                # Process regular text using BytePairEncoding's native pipeline
+                # Handle punctuation more efficiently
+                processed_parts = String[]
+                current_part = ""
+
+                # Single-pass punctuation handling
+                for (i, char) in enumerate(part)
+                    if char in PUNCTUATION
+                        if !isempty(current_part)
+                            push!(processed_parts, current_part)
+                            current_part = ""
+                        end
+                        push!(processed_parts, string(char))
+                    else
+                        current_part *= string(char)
+                    end
+                end
+
+                # Add any remaining text
+                if !isempty(current_part)
+                    push!(processed_parts, current_part)
+                end
+
+                # Process each subpart
+                for (k, subpart) in enumerate(processed_parts)
+                    # Skip empty parts
+                    isempty(strip(subpart)) && continue
+
+                    # Preserve whitespace information
+                    has_leading_space = !isempty(subpart) && isspace(subpart[1])
+                    normalized_part = strip(subpart)
+                    is_first_in_text = i == 1 && k == 1 &&
+                                       all(isspace,
+                                           subpart[1:prevind(
+                                               subpart, firstindex(normalized_part))])
+
+                    # Process tokens
+                    if !isempty(normalized_part)
+                        tokens = tokenizer.tokenizer(Sentence(normalized_part))
+
+                        for (j, token) in enumerate(tokens)
+                            token_str = getvalue(token)
+                            isempty(token_str) && continue
+
+                            # Add Ġ prefix for tokens after whitespace
+                            if has_leading_space && j == 1 && !startswith(token_str, 'Ġ')
+                                token_str = "Ġ" * token_str
+                            end
+
+                            if token_ids
+                                # Handle punctuation tokens directly
+                                if length(token_str) == 1 &&
+                                   (ispunct(token_str[1]) || token_str[1] in PUNCTUATION)
+                                    token_id = get(tokenizer.vocab, token_str, nothing)
+                                    if isnothing(token_id)
+                                        token_id = tokenizer.special_tokens["[UNK]"]
+                                    end
+                                else
+                                    # Optimize token lookup with single dictionary access
+                                    needs_prefix = (!is_first_in_text && j == 1 &&
+                                                    k == 1) ||
+                                                   (j > 1) ||
+                                                   (k > 1 && !(length(token_str) == 1 &&
+                                                      token_str[1] in PUNCTUATION))
+
+                                    # Try lookup with existing string first
+                                    token_id = get(tokenizer.vocab, token_str, nothing)
+
+                                    # Only modify string if needed
+                                    if isnothing(token_id)
+                                        if needs_prefix && !startswith(token_str, 'Ġ')
+                                            # Try with prefix
+                                            token_id = get(
+                                                tokenizer.vocab, "Ġ" * token_str, nothing)
+                                        elseif startswith(token_str, 'Ġ')
+                                            # Try without prefix
+                                            token_id = get(tokenizer.vocab,
+                                                @view(token_str[nextind(token_str, 1):end]),
+                                                nothing)
+                                        end
+                                    end
+                                end
+
+                                # If still not found, use UNK token
+                                if isnothing(token_id)
+                                    token_id = tokenizer.special_tokens["[UNK]"]
+                                end
+
+                                push!(result, token_id)
+                            else
+                                push!(result, token_str)
+                            end
+                        end
+                    end
                 end
             end
         end
     end
-    
-    # Add [SEP] if needed
-    if add_special_tokens
+
+    # Add SEP token if requested
+    if include_special_tokens
         if token_ids
             push!(result, tokenizer.special_tokens["[SEP]"])
         else
             push!(result, "[SEP]")
         end
     end
-    
-    # Cache the result if we're returning IDs
-    if token_ids
-        tokenizer.cache[cache_key] = copy(result)
-    end
-    
+
     return result
 end
 
-function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractString)
-    # Tokenize with special tokens
-    token_ids = tokenize(tokenizer, text; token_ids=true, add_special_tokens=true)
-    
-    # Truncate to 512 tokens if needed
-    if length(token_ids) > 512
-        token_ids = token_ids[1:512]
-        token_ids[end] = tokenizer.special_tokens["[SEP]"]  # Ensure we end with [SEP]
+function encode(
+        tokenizer::ModernBertTokenizer, text::String; include_special_tokens::Bool = true)
+    # Special case: if text is a special token, wrap it with CLS/SEP
+    if haskey(tokenizer.special_tokens, text)
+        tokens = [
+            tokenizer.special_tokens["[CLS]"],
+            tokenizer.special_tokens[text],
+            tokenizer.special_tokens["[SEP]"]
+        ]
+    else
+        # For regular text, use tokenize with special tokens
+        tokens = tokenize(tokenizer, text; token_ids = true, include_special_tokens)
     end
-    
-    # Create attention mask and token type IDs
-    token_type_ids = zeros(Int, length(token_ids))
-    attention_mask = ones(Int, length(token_ids))
-    
-    return token_ids, token_type_ids, attention_mask
+    attention_mask = ones(Int, length(tokens))
+    token_type_ids = zeros(Int, length(tokens))
+    return tokens, attention_mask, token_type_ids
 end
 
-function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{String})
-    # Process each text and return the tokens with their type IDs and attention masks
-    results = [encode(tokenizer, text) for text in texts]
-    token_ids = [r[1] for r in results]
-    token_type_ids = [r[2] for r in results]
-    attention_masks = [r[3] for r in results]
-    return token_ids, token_type_ids, attention_masks
-end
+function encode(tokenizer::ModernBertTokenizer, texts::Vector{String};
+        include_special_tokens::Bool = true)
+    # Get individual encodings
+    encodings = [encode(tokenizer, text; include_special_tokens) for text in texts]
 
-end # module ModernBertTokenizerImpl
+    # Find max length
+    max_length = maximum(length(enc[1]) for enc in encodings)
+
+    # Create matrices
+    n_texts = length(texts)
+    token_matrix = fill(tokenizer.special_tokens["[PAD]"], max_length, n_texts)
+    attention_matrix = zeros(Int, max_length, n_texts)
+    type_matrix = zeros(Int, max_length, n_texts)
+
+    # Fill matrices
+    for (j, encoding) in enumerate(encodings)
+        tokens, attention, types = encoding
+        for i in 1:length(tokens)
+            token_matrix[i, j] = tokens[i]
+            attention_matrix[i, j] = attention[i]
+            type_matrix[i, j] = types[i]
+        end
+    end
+
+    return token_matrix, attention_matrix, type_matrix
+end
