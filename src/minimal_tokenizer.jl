@@ -151,10 +151,12 @@ end
 
 # Find longest matching token in vocabulary
 function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_idx::Int)
-    # Check for special tokens first
+    # Check for special tokens first (including [MASK])
     for (token, id) in tokenizer.special_tokens
-        if start_idx + length(token) - 1 <= lastindex(text)
-            if text[start_idx:start_idx + length(token) - 1] == token
+        token_len = length(token)
+        if start_idx + token_len - 1 <= lastindex(text)
+            # Use exact string comparison for special tokens
+            if text[start_idx:start_idx + token_len - 1] == token
                 return token, id
             end
         end
@@ -179,10 +181,11 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
         try
             substr = text[start_idx:current_idx]
             
-            # Always prioritize regular tokens over Ġ-prefixed variants
-            variants = [substr]
-            if is_start_or_after_space
-                push!(variants, "Ġ" * substr)
+            # After spaces, prioritize Ġ-prefixed variants
+            variants = if is_start_or_after_space
+                ["Ġ" * substr, substr]  # Try Ġ-prefixed first after spaces
+            else
+                [substr]  # Only try non-prefixed in mid-word
             end
             
             # Check each variant against token dictionaries
@@ -223,7 +226,7 @@ end
 
 # Tokenize text into subwords
 function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
-    # First check if the text is a special token
+    # First check if the text is a special token (including [MASK])
     if haskey(tokenizer.special_tokens, text)
         return [tokenizer.special_tokens[text]]
     end
@@ -240,11 +243,13 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
     
     # Try all variants in appropriate order
     if is_start_or_after_space
-        # At start or after space, check Ġ-prefixed first
-        variants = ["Ġ" * text, text]
+        # At start or after space, ALWAYS try Ġ-prefixed first
+        variants = ["Ġ" * text]
+        # Only try non-prefixed version if Ġ-prefixed fails
+        push!(variants, text)
     else
-        # Mid-word, check normal variant first
-        variants = [text, "Ġ" * text]
+        # Mid-word, only try normal variant
+        variants = [text]
     end
     
     # Check each variant against all token dictionaries
