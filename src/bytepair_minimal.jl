@@ -15,6 +15,7 @@ export ModernBertTokenizer, encode, tokenize, load_modernbert_tokenizer, add_spe
 
 # Define module-level constants and flags
 const include_special_tokens = true  # Default flag for special token inclusion
+const token_ids = true  # Default flag for returning token IDs instead of strings
 
 # Define module-level constants
 const DEFAULT_SPECIAL_TOKENS = Dict{String, Int}(
