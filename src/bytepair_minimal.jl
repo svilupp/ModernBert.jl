@@ -173,18 +173,10 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
         parts = String[]
         current_text = text
         
-        # Replace special tokens with unique placeholders
-        special_tokens = Dict(
-            "[MASK]" => "\uf001MASK\uf001",
-            "[SEP]" => "\uf002SEP\uf002",
-            "[CLS]" => "\uf003CLS\uf003",
-            "[PAD]" => "\uf004PAD\uf004",
-            "[UNK]" => "\uf005UNK\uf005"
-        )
-        
-        # Replace special tokens with placeholders
-        for (token, placeholder) in special_tokens
-            current_text = replace(current_text, token => placeholder)
+        # Process special tokens directly without creating temporary dictionary
+        # This avoids unnecessary allocations and dictionary operations
+        for token in ("[MASK]", "[SEP]", "[CLS]", "[PAD]", "[UNK]")
+            current_text = replace(current_text, token => token)
         end
         
         # Split text into parts while preserving special tokens
@@ -193,14 +185,15 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
         text_length = length(current_text)
         
         while current_pos <= text_length
-            # Find the next special token
+            # Find the next special token more efficiently
             next_special = nothing
             next_pos = text_length + 1
             
-            for (token, placeholder) in special_tokens
-                pos = findnext(placeholder, current_text, current_pos)
+            # Direct iteration over special tokens without dictionary lookup
+            for token in ("[MASK]", "[SEP]", "[CLS]", "[PAD]", "[UNK]")
+                pos = findnext(token, current_text, current_pos)
                 if !isnothing(pos) && pos.start < next_pos
-                    next_special = (token, placeholder, pos)
+                    next_special = (token, token, pos)
                     next_pos = pos.start
                 end
             end
@@ -228,13 +221,10 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
         
         # Process each part
         for (i, part) in enumerate(parts)
-            # Check if part is a placeholder
+            # Check if part is a special token
             original_token = nothing
-            for (token, placeholder) in special_tokens
-                if part == placeholder
-                    original_token = token
-                    break
-                end
+            if haskey(tokenizer.special_tokens, part)
+                original_token = part
             end
             
             if !isnothing(original_token)
@@ -246,18 +236,26 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                 end
             else
                 # Process regular text using BytePairEncoding's native pipeline
-                # Handle punctuation separately
-                punctuation = r"([.,!?])"
-                subparts = split(part, punctuation, keepempty=false)
-                punct_matches = eachmatch(punctuation, part)
-                
-                # Interleave text and punctuation
+                # Handle punctuation more efficiently
                 processed_parts = String[]
-                for (idx, subpart) in enumerate(subparts)
-                    !isempty(strip(subpart)) && push!(processed_parts, subpart)
-                    if idx <= length(collect(punct_matches))
-                        push!(processed_parts, collect(punct_matches)[idx].match)
+                current_part = ""
+                
+                # Single-pass punctuation handling
+                for (i, char) in enumerate(part)
+                    if char in ('.', ',', '!', '?')
+                        if !isempty(current_part)
+                            push!(processed_parts, current_part)
+                            current_part = ""
+                        end
+                        push!(processed_parts, string(char))
+                    else
+                        current_part *= string(char)
                     end
+                end
+                
+                # Add any remaining text
+                if !isempty(current_part)
+                    push!(processed_parts, current_part)
                 end
                 
                 # Process each subpart
@@ -285,20 +283,22 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                                         token_id = tokenizer.special_tokens["[UNK]"]
                                     end
                                 else
-                                    # Add Ġ prefix for non-initial tokens or tokens after whitespace
+                                    # Optimize token lookup with single dictionary access
                                     needs_prefix = (!is_first_in_text && j == 1 && k == 1) || 
                                                  (j > 1) || (k > 1 && !occursin(punctuation, token_str))
-                                    if needs_prefix && !startswith(token_str, 'Ġ')
-                                        token_str = "Ġ" * token_str
-                                    end
                                     
-                                    # Try exact match first
+                                    # Try lookup with existing string first
                                     token_id = get(tokenizer.vocab, token_str, nothing)
                                     
-                                    # If not found, try without Ġ prefix
-                                    if isnothing(token_id) && startswith(token_str, 'Ġ')
-                                        base_str = token_str[nextind(token_str, 1):end]
-                                        token_id = get(tokenizer.vocab, base_str, nothing)
+                                    # Only modify string if needed
+                                    if isnothing(token_id)
+                                        if needs_prefix && !startswith(token_str, 'Ġ')
+                                            # Try with prefix
+                                            token_id = get(tokenizer.vocab, "Ġ" * token_str, nothing)
+                                        elseif startswith(token_str, 'Ġ')
+                                            # Try without prefix
+                                            token_id = get(tokenizer.vocab, @view(token_str[nextind(token_str, 1):end]), nothing)
+                                        end
                                     end
                                 end
                                 
