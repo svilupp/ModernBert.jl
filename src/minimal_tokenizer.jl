@@ -963,6 +963,7 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractStr
     
     return tokens, token_types, attention_mask
 end
+end
 
 # Implement TextEncodeBase.encode for vector of strings
 function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{String})
