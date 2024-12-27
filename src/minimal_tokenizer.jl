@@ -651,46 +651,22 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
             continue
         end
             
-    # Try to match the full word with cached dictionaries
-    # For words after space, try with and without Ġ prefix based on context
-    # For words like "O'Neill", try Ġ prefix first
-    if startswith(full_word, "O'") || startswith(full_word, "O-")
-        prefixed_word = "Ġ" * full_word
-        if haskey(known_tokens, prefixed_word)
-            push!(tokens, known_tokens[prefixed_word])
-            i = word_end
-            continue
-        elseif haskey(vocab, prefixed_word)
-            push!(tokens, vocab[prefixed_word])
-            i = word_end
-            continue
-        end
-    else
-        # For other words, try without prefix first
-        if haskey(known_tokens, full_word)
-            push!(tokens, known_tokens[full_word])
-            i = word_end
-            continue
-        elseif haskey(vocab, full_word)
-            push!(tokens, vocab[full_word])
-            i = word_end
-            continue
-        end
-        
-        # Then try with Ġ prefix
-        prefixed_word = "Ġ" * full_word
-        if haskey(known_tokens, prefixed_word)
-            push!(tokens, known_tokens[prefixed_word])
-            i = word_end
-            continue
-        elseif haskey(vocab, prefixed_word)
-            push!(tokens, vocab[prefixed_word])
-            i = word_end
-            continue
-        end
-    end
-            
-            # Try without prefix
+        # Try to match the full word with cached dictionaries
+        # For words after space, try with and without Ġ prefix based on context
+        # For words like "O'Neill", try Ġ prefix first
+        if startswith(full_word, "O'") || startswith(full_word, "O-")
+            prefixed_word = "Ġ" * full_word
+            if haskey(known_tokens, prefixed_word)
+                push!(tokens, known_tokens[prefixed_word])
+                i = word_end
+                continue
+            elseif haskey(vocab, prefixed_word)
+                push!(tokens, vocab[prefixed_word])
+                i = word_end
+                continue
+            end
+        else
+            # For other words, try without prefix first
             if haskey(known_tokens, full_word)
                 push!(tokens, known_tokens[full_word])
                 i = word_end
@@ -700,6 +676,19 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 i = word_end
                 continue
             end
+            
+            # Then try with Ġ prefix
+            prefixed_word = "Ġ" * full_word
+            if haskey(known_tokens, prefixed_word)
+                push!(tokens, known_tokens[prefixed_word])
+                i = word_end
+                continue
+            elseif haskey(vocab, prefixed_word)
+                push!(tokens, vocab[prefixed_word])
+                i = word_end
+                continue
+            end
+        end
             
             # Handle UTF-8 and special characters
             if !isascii(full_word)
