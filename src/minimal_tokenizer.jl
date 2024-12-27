@@ -152,12 +152,19 @@ end
 # Find longest matching token in vocabulary
 function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_idx::Int)
     # Check for special tokens first (including [MASK])
-    for (token, id) in tokenizer.special_tokens
+    # Sort special tokens by length (longest first) to avoid partial matches
+    sorted_tokens = sort(collect(tokenizer.special_tokens), by=x->length(x.first), rev=true)
+    for (token, id) in sorted_tokens
         token_len = length(token)
         if start_idx + token_len - 1 <= lastindex(text)
             # Use exact string comparison for special tokens
-            if text[start_idx:start_idx + token_len - 1] == token
-                return token, id
+            current_text = text[start_idx:start_idx + token_len - 1]
+            if current_text == token
+                # Ensure we have a complete token match by checking boundaries
+                next_idx = start_idx + token_len
+                if next_idx > lastindex(text) || isspace(text[next_idx]) || ispunct(text[next_idx])
+                    return token, id
+                end
             end
         end
     end
@@ -237,13 +244,14 @@ function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
     end
     
     # For all words, check all variants before returning UNK
-    # Determine if we're at start/after space or mid-word
+    # Determine if we're at start/after space/punctuation
+    prev_idx = prevind(text, firstindex(text))
     is_start_or_after_space = firstindex(text) == 1 || 
-        (firstindex(text) > 1 && isspace(text[prevind(text, firstindex(text))]))
+        (firstindex(text) > 1 && (isspace(text[prev_idx]) || ispunct(text[prev_idx])))
     
     # Try all variants in appropriate order
     if is_start_or_after_space
-        # At start or after space, ALWAYS try Ġ-prefixed first
+        # At start or after space/punctuation, ALWAYS try Ġ-prefixed first
         variants = ["Ġ" * text]
         # Only try non-prefixed version if Ġ-prefixed fails
         push!(variants, text)
@@ -790,9 +798,52 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractStr
         return tokens, token_types, attention_mask
     end
     
-    # Add main tokens
-    main_tokens = tokenize(tokenizer, text)
-    append!(tokens, main_tokens)
+    # Split on special tokens and tokenize parts
+    parts = String[]
+    current_start = 1
+    text_length = lastindex(text)
+    
+    # Sort special tokens by length (longest first) to avoid partial matches
+    sorted_tokens = sort(collect(tokenizer.special_tokens), by=x->length(x.first), rev=true)
+    
+    i = 1
+    while i <= text_length
+        found_special = false
+        for (token, id) in sorted_tokens
+            token_len = length(token)
+            if i + token_len - 1 <= text_length
+                if text[i:i+token_len-1] == token
+                    # Add text before special token
+                    if i > current_start
+                        push!(parts, text[current_start:i-1])
+                    end
+                    # Add special token
+                    push!(parts, token)
+                    i += token_len
+                    current_start = i
+                    found_special = true
+                    break
+                end
+            end
+        end
+        if !found_special
+            i = nextind(text, i)
+        end
+    end
+    
+    # Add remaining text
+    if current_start <= text_length
+        push!(parts, text[current_start:end])
+    end
+    
+    # Tokenize each part
+    for part in parts
+        if haskey(tokenizer.special_tokens, part)
+            push!(tokens, tokenizer.special_tokens[part])
+        else
+            append!(tokens, tokenize(tokenizer, part))
+        end
+    end
     
     # Add SEP token at end if not already present
     if isempty(tokens) || tokens[end] != tokenizer.special_tokens["[SEP]"]
