@@ -32,6 +32,9 @@ const DEFAULT_SPECIAL_TOKENS = Dict{String, Int}(
     "\t" => 50287      # Tab token
 )
 
+# Define punctuation characters
+const PUNCTUATION = Set(['[', ']', '.', ',', '!', '?', '-', '@', '{', '}', '\''])
+
 """
     ModernBertTokenizer
 
@@ -277,7 +280,7 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                             
                             if token_ids
                                 # Handle punctuation tokens directly
-                                if length(token_str) == 1 && occursin(punctuation, token_str)
+                                if length(token_str) == 1 && (ispunct(token_str[1]) || token_str[1] in PUNCTUATION)
                                     token_id = get(tokenizer.vocab, token_str, nothing)
                                     if isnothing(token_id)
                                         token_id = tokenizer.special_tokens["[UNK]"]
@@ -285,7 +288,7 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                                 else
                                     # Optimize token lookup with single dictionary access
                                     needs_prefix = (!is_first_in_text && j == 1 && k == 1) || 
-                                                 (j > 1) || (k > 1 && !occursin(punctuation, token_str))
+                                                 (j > 1) || (k > 1 && !(length(token_str) == 1 && token_str[1] in PUNCTUATION))
                                     
                                     # Try lookup with existing string first
                                     token_id = get(tokenizer.vocab, token_str, nothing)
