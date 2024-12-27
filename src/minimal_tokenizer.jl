@@ -406,9 +406,31 @@ end
 
 # Tokenize text into subwords
 function tokenize_subwords(tokenizer::ModernBertTokenizer, text::String)
-    # Check for special tokens first
+    # Check for special tokens first (including [MASK])
     if haskey(tokenizer.special_tokens, text)
-        return [tokenizer.special_tokens[text]]
+        token_id = tokenizer.special_tokens[text]
+        return [token_id]
+    end
+    
+    # Check if text contains special tokens
+    for (token, id) in tokenizer.special_tokens
+        if occursin(token, text)
+            # Split around special token
+            parts = split(text, token)
+            result = Int[]
+            
+            # Process each part and add special token in between
+            for (i, part) in enumerate(parts)
+                if !isempty(part)
+                    append!(result, tokenize_subwords(tokenizer, part))
+                end
+                if i < length(parts)
+                    push!(result, id)
+                end
+            end
+            
+            return result
+        end
     end
     
     # Handle empty or whitespace-only text
@@ -463,7 +485,7 @@ function load_modernbert_tokenizer()
 end
 
 # Implement TextEncodeBase.tokenize for single string
-function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true)
+function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true, include_special_tokens::Bool=false)
     # Handle empty string case
     if isempty(text)
         if haskey(tokenizer.known_tokens, "Ġ")
@@ -471,6 +493,11 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         else
             return token_ids ? Int[] : String[]
         end
+    end
+    
+    # Check for special tokens first
+    if haskey(tokenizer.special_tokens, text)
+        return token_ids ? [tokenizer.special_tokens[text]] : [text]
     end
     
     # Initialize result arrays
