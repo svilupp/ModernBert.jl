@@ -9,9 +9,15 @@ tokenizer = load_modernbert_tokenizer(vocab_path)
 
 @testset "Core Special Tokens" begin
     # Test essential special tokens only
-    @test tokenizer.special_tokens["[CLS]"] == 50281
-    @test tokenizer.special_tokens["[SEP]"] == 50282
-    @test tokenizer.special_tokens["[UNK]"] == 50280
+    special_tokens = Dict(
+        "[CLS]" => 50281,
+        "[SEP]" => 50282,
+        "[UNK]" => 50280
+    )
+    for (token, id) in special_tokens
+        @test haskey(tokenizer.special_tokens, token)
+        @test tokenizer.special_tokens[token] == id
+    end
 end
 
 @testset "Basic Tokenization" begin

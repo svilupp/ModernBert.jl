@@ -13,6 +13,8 @@ include("setup.jl")
 # end
 
 @testset "ModernBert.jl" begin
-    # Focus on tokenizer tests first
-    include("test_tokenizer.jl")
+    # Add timing information and use minimal test suite
+    @time begin
+        include("minimal_test.jl")
+    end
 end
