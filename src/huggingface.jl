@@ -82,7 +82,7 @@ function download_model(repo_url::String, target_dir::String = "data",
     # Download model file
     repo_id = parse_repo_id(repo_url)
     model_url = "https://huggingface.co/$(repo_id)/resolve/main/onnx/$(model_name)?download=true"
-    model_path = joinpath(target_dir, "model.onnx")
+    model_path = joinpath(target_dir, model_name)
 
     if !isfile(model_path)
         try
