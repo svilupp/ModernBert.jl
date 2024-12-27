@@ -783,21 +783,25 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, texts::Vector{S
 end
 
 # Implement TextEncodeBase.encode for single string
-function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractString)
+function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractString; special_tokens::Dict{String, Int}=Dict{String, Int}())
     # Handle empty string case
     if isempty(text)
         return Int[], Int[], Int[]
     end
+    
+    # Merge special tokens with default special tokens, giving priority to provided ones
+    merged_special_tokens = merge(tokenizer.special_tokens, special_tokens)
     
     # Initialize result arrays
     tokens = Int[]
     token_types = Int[]
     attention_mask = Int[]
     
-    # Add [CLS] token
-    push!(tokens, tokenizer.special_tokens["[CLS]"])
-    push!(token_types, 0)
-    push!(attention_mask, 1)
+    # Add [CLS] token if present in merged special tokens
+    if haskey(merged_special_tokens, "[CLS]")
+        push!(tokens, merged_special_tokens["[CLS]"])
+        push!(token_types, 0)
+        push!(attention_mask, 1)
     
     # Process text character by character
     i = firstindex(text)
