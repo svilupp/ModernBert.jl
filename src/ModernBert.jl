@@ -3,10 +3,10 @@ module ModernBert
 # Core dependencies
 using JSON3
 using Downloads
-using TextEncodeBase
 using Base: ones, zeros
 
-# Import specific types and methods for extension
+# Import TextEncodeBase types and methods
+using TextEncodeBase
 import TextEncodeBase: AbstractTokenizer, encode, tokenize
 
 # Include core tokenizer implementation

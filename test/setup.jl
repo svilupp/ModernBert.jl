@@ -1,6 +1,6 @@
 using Downloads
+using ModernBert: download_config_files
 
-# Import specific function after ModernBert is loaded in runtests.jl
 const REPO_URL = "https://huggingface.co/answerdotai/ModernBERT-base"
 MODEL_URL = "https://huggingface.co/answerdotai/ModernBERT-base/resolve/main/onnx/model_int8.onnx"
 ## Rename the model file to model.onnx
