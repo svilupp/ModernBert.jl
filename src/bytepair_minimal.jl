@@ -1,5 +1,9 @@
 module ModernBertTokenizerImpl
 
+# Export types and functions first
+export ModernBertTokenizer, encode, tokenize, load_modernbert_tokenizer, add_special_tokens
+
+# Import dependencies
 using TextEncodeBase
 using BytePairEncoding: BPE, BPETokenization, BPETokenizer, GPT2Tokenization, Merge, parse_merge, gpt2_codemap
 using TextEncodeBase: encode, tokenize, FlatTokenizer, CodeNormalizer
@@ -9,9 +13,6 @@ using Base: ones, zeros
 
 # Import functions we want to extend
 import TextEncodeBase: tokenize, encode
-
-# Export types and functions
-export ModernBertTokenizer, encode, tokenize, load_modernbert_tokenizer, add_special_tokens
 
 # Define module-level constants and flags
 const include_special_tokens = true  # Default flag for special token inclusion
@@ -312,7 +313,6 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                             end
                         end
                     end
-                end
                 end
             end
         end
