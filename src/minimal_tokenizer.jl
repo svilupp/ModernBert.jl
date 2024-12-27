@@ -4,7 +4,7 @@ using TextEncodeBase
 using JSON3
 
 # Import TextEncodeBase methods for extension
-import TextEncodeBase: AbstractTextEncoder, AbstractTokenizer, tokenize, encode
+import TextEncodeBase: AbstractTokenizer, tokenize, encode
 
 # Define module-level constants for special tokens
 const SPECIAL_TOKENS = Dict{String, Int}(

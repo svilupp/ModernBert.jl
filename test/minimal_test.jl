@@ -5,7 +5,12 @@ using JSON3
 # Load tokenizer once for all tests
 vocab_path = joinpath(@__DIR__, "model", "tokenizer.json")
 @assert isfile(vocab_path) "tokenizer.json not found at $(vocab_path)"
-tokenizer = load_modernbert_tokenizer(vocab_path)
+tokenizer = try
+    load_modernbert_tokenizer(vocab_path)
+catch e
+    @warn "Failed to load tokenizer" exception=e
+    rethrow()
+end
 
 @testset "Core Special Tokens" begin
     # Test essential special tokens only

@@ -7,7 +7,7 @@ using TextEncodeBase
 using Base: ones, zeros
 
 # Import specific types and methods for extension
-import TextEncodeBase: AbstractTextEncoder, AbstractTokenizer, encode, tokenize
+import TextEncodeBase: AbstractTokenizer, encode, tokenize
 
 # Include core tokenizer implementation
 include("minimal_tokenizer.jl")
