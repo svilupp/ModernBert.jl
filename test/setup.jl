@@ -1,14 +1,7 @@
-using Downloads
-using ModernBert: download_config_files
+using ModernBert: download_config_files, download_model
 
-const REPO_URL = "https://huggingface.co/answerdotai/ModernBERT-base"
-MODEL_URL = "https://huggingface.co/answerdotai/ModernBERT-base/resolve/main/onnx/model_int8.onnx"
-## Rename the model file to model.onnx
-MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
-
-download_config_files(REPO_URL, joinpath(@__DIR__, "model"))
-if !isfile(MODEL_PATH)
-    mkpath(dirname(MODEL_PATH))
-    Downloads.download(MODEL_URL, MODEL_PATH)
-    @info "Downloaded: $MODEL_PATH"
+# Only download tokenizer for now - we'll test tokenizer functionality first
+tokenizer_path = joinpath(@__DIR__, "model", "tokenizer.json")
+if !isfile(tokenizer_path)
+    download_config_files(REPO_URL, dirname(tokenizer_path))
 end

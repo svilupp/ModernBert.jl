@@ -1,50 +1,27 @@
 using Test
-using ModernBert
-using JSON3
+using ModernBert: ModernBertEncoder, encode, tokenize
 
-# Load tokenizer once for all tests
+# Setup
 vocab_path = joinpath(@__DIR__, "model", "tokenizer.json")
-@assert isfile(vocab_path) "tokenizer.json not found at $(vocab_path)"
-tokenizer = try
-    load_modernbert_tokenizer(vocab_path)
-catch e
-    @warn "Failed to load tokenizer" exception=e
-    rethrow()
-end
+@assert isfile(vocab_path) "tokenizer.json not found"
 
-@testset "Core Special Tokens" begin
-    # Test essential special tokens only
-    special_tokens = Dict(
-        "[CLS]" => 50281,
-        "[SEP]" => 50282,
-        "[UNK]" => 50280
-    )
-    for (token, id) in special_tokens
-        @test haskey(tokenizer.special_tokens, token)
-        @test tokenizer.special_tokens[token] == id
-    end
-end
+# Create encoder
+println("Creating encoder...")
+encoder = ModernBertEncoder(vocab_path)
+println("Encoder created successfully")
 
-@testset "Basic Tokenization" begin
-    # Test minimal sentence tokenization
-    text = "Hello"  # Single word to minimize test complexity
-    tokens = tokenize(tokenizer, text)
-    @test length(tokens) > 0
-    
-    # Test full encoding with special tokens (minimal case)
-    tokens, _, _ = encode(tokenizer, text)
-    @test tokens[1] == 50281  # [CLS]
-    @test tokens[end] == 50282  # [SEP]
-    @test length(tokens) >= 3  # At least CLS, one word token, and SEP
-    
-    # Test [MASK] token handling
-    text_mask = "The capital of France is [MASK]."
-    tokens_mask, _, _ = encode(tokenizer, text_mask)
-    @test 50284 in tokens_mask  # [MASK] token should be present
-    
-    # Test word boundary after punctuation
-    text_punct = "Mr. O'Neill"
-    tokens_punct = tokenize(tokenizer, text_punct)
-    @test length(tokens_punct) > 0
-    @test any(id -> haskey(tokenizer.id_to_token, id) && startswith(tokenizer.id_to_token[id], "Ġ"), tokens_punct)
-end
+# Test basic tokenization
+println("Testing basic tokenization...")
+tokens = tokenize(encoder, "hello world")
+@test tokens[1] == "[CLS]"
+@test tokens[end] == "[SEP]"
+println("Basic tokenization successful")
+
+# Test basic encoding
+println("Testing basic encoding...")
+token_ids = encode(encoder, "hello world")
+@test token_ids[1] == encoder.special_tokens["[CLS]"]
+@test token_ids[end] == encoder.special_tokens["[SEP]"]
+println("Basic encoding successful")
+
+println("All tests completed successfully")

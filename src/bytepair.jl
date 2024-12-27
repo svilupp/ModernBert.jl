@@ -1,170 +1,278 @@
-module ModernBertTokenizerImpl
+# Define module-level constants
+# Helper function to detect emoji and other special Unicode characters
+function is_special_unicode(c::Char)
+    cat = Base.Unicode.category_code(c)
+    # Unicode categories for emoji and symbols
+    return (cat == 28) ||  # So (Symbol_other)
+           (cat == 25) ||  # Sc (Symbol_currency)
+           (cat == 24) ||  # Sm (Symbol_math)
+           (0x1F300 ≤ UInt32(c) ≤ 0x1F9FF)  # Emoji block
+end
 
-export ModernBertTokenizer, load_modernbert_tokenizer, tokenize, encode
-
-using Unicode
-using TextEncodeBase
-using BytePairEncoding
-using JSON3
-
-import TextEncodeBase: encode, tokenize, FlatTokenizer, CodeNormalizer, Sentence, getvalue
-import BytePairEncoding: BPE, GPT2Tokenization, BPETokenization, gpt2_codemap
-
-# Special token IDs that must be preserved exactly
-const SPECIAL_TOKEN_IDS = Dict{String, Int}(
+const DEFAULT_SPECIAL_TOKENS = Dict{String, Int}(
+    "[UNK]" => 50280,
     "[CLS]" => 50281,
     "[SEP]" => 50282,
-    "[MASK]" => 50284,
     "[PAD]" => 50283,
-    "[UNK]" => 50280,
-    # Additional padding tokens to complete vocabulary
-    "[PAD1]" => 50285,
-    "[PAD2]" => 50286,
-    "[PAD3]" => 50287
+    "[MASK]" => 50284
 )
 
-# Basic tokenizer structure
-mutable struct ModernBertTokenizer
-    tokenizer::FlatTokenizer
-    vocab::Dict{String, Int}
-    id_to_token::Dict{Int, String}
+"""
+    ModernBertEncoder
+
+A wrapper around ModernBertTokenizer that provides encode/decode functionality compatible with BytePairEncoding.jl.
+Special tokens ([CLS], [SEP], [MASK], [PAD], [UNK]) are automatically handled during encoding and decoding.
+
+# Special Token IDs
+- [UNK]: 50280 - Used for unknown tokens
+- [CLS]: 50281 - Added at the start of sequences
+- [SEP]: 50282 - Added at the end of sequences
+- [PAD]: 50283 - Used for padding in batch operations
+- [MASK]: 50284 - Used for masked language modeling
+
+# Examples
+```julia-repl
+julia> encoder = ModernBertEncoder("data/tokenizer.json")
+ModernBertEncoder(...)
+
+# Tokenization (returns string tokens)
+julia> tokenize(encoder, "hello world")
+4-element Vector{String}:
+ "[CLS]"
+ "hello"
+ "world"
+ "[SEP]"
+
+# Encoding (returns token IDs)
+julia> encode(encoder, "hello world")
+4-element Vector{Int64}:
+ 50281  # [CLS]
+ 15339  # hello
+  1917  # world
+ 50282  # [SEP]
+
+# Batch encoding (returns matrix of token IDs)
+julia> encode(encoder, ["hello", "world"])
+4×2 Matrix{Int64}:
+ 50281  50281  # [CLS]
+ 15339   1917  # tokens
+ 50282  50282  # [SEP]
+ 50283  50283  # [PAD]
+```
+"""
+struct ModernBertEncoder <: TextEncodeBase.AbstractTextEncoder
+    tokenizer::Any  # BytePairEncoding tokenizer
+    vocab::Vocab
     special_tokens::Dict{String, Int}
-    cache::Dict{String, Vector{Int}}
+    id_to_token::Dict{Int, String}
+end
+function Base.propertynames(e::ModernBertEncoder)
+    (:encode, :decode, fieldnames(ModernBertEncoder)...)
+end
+function Base.getproperty(e::ModernBertEncoder, sym::Symbol)
+    if sym == :encode
+        return e
+    elseif sym == :decode
+        return Base.Fix1(TextEncodeBase.decode_text, e)
+    else
+        return getfield(e, sym)
+    end
 end
 
-function load_modernbert_tokenizer(config_path::String)
-    @assert isfile(config_path) "Tokenizer configuration file not found: $config_path"
-    
-    # Load configuration
+"""
+    Base.show(io::IO, e::ModernBertEncoder)
+
+Pretty-print a ModernBertEncoder instance, showing the underlying tokenizer and vocabulary size.
+"""
+function Base.show(io::IO, e::ModernBertEncoder)
+    print(io, "ModernBertEncoder(")
+    show(io, e.tokenizer)
+    print(io, ", Vocab(size = ")
+    print(io, length(e.vocab))
+    print(io, "))")
+end
+"""
+    TextEncodeBase.process(e::ModernBertEncoder)
+
+Process function for TextEncodeBase compatibility. Returns the identity function as no
+pre-processing is needed for ModernBertEncoder.
+"""
+TextEncodeBase.process(e::ModernBertEncoder) = identity
+function (e::ModernBertEncoder)(x::AbstractString)
+    TextEncodeBase.lookup(e.vocab, encode_indices(e, x))
+end
+
+"""
+    ModernBertEncoder(config_path::String)
+
+Create a ModernBertEncoder from a configuration file path. The configuration file should be
+a JSON file containing the vocabulary and merge rules for the tokenizer.
+
+The encoder validates that all special tokens ([CLS], [SEP], [MASK], [PAD], [UNK]) are present
+in the vocabulary with the correct IDs. It also initializes the BPE tokenizer with the
+merge rules from the configuration.
+
+# Arguments
+- `config_path::String`: Path to the tokenizer configuration JSON file
+
+# Returns
+- `ModernBertEncoder`: A new encoder instance
+
+# Throws
+- `AssertionError`: If the config file is not found
+- `ErrorException`: If special tokens are missing or have incorrect IDs
+"""
+function ModernBertEncoder(config_path::String)
+    @assert isfile(config_path) "Config file not found at $config_path"
     config = JSON3.read(read(config_path, String))
-    
-    # Create vocabulary mappings
-    vocab = Dict{String, Int}()
-    id_to_token = Dict{Int, String}()
-    
-    # Add special tokens first to ensure exact IDs
-    for (token, id) in SPECIAL_TOKEN_IDS
-        vocab[token] = id
-        id_to_token[id] = token
-    end
-    
-    # Add special tokens first to ensure exact IDs
-    for (token, id) in SPECIAL_TOKEN_IDS
-        vocab[token] = id
-        id_to_token[id] = token
-    end
-    
-    # Add vocabulary from config
+
+    # Use module-level special tokens mapping
+    special_tokens = copy(DEFAULT_SPECIAL_TOKENS)
+
+    # Create vocabulary mapping
+    vocab_dict = Dict{String, Int}()
+
+    # Load vocabulary with exact GPT2 token mappings
     for (token, id) in config.model.vocab
-        token = String(token)
-        # Skip if token is already in vocab (special tokens)
-        if !haskey(vocab, token)
-            vocab[token] = id
-            id_to_token[id] = token
+        token_str = String(token)
+        token_id = parse(Int, string(id))
+        vocab_dict[token_str] = token_id
+    end
+
+    # Load additional tokens if present
+    if haskey(config, :added_tokens)
+        for token in config.added_tokens
+            vocab_dict[String(token.content)] = token.id
         end
     end
-    
-    # Create merge rules
-    merges = Dict{NTuple{2, BytePairEncoding.Merge}, Int}()
-    for (i, merge_rule) in enumerate(config.model.merges)
-        parts = split(String(merge_rule))
-        if length(parts) == 2
-            merge_pair = (BytePairEncoding.Merge(parts[1]), BytePairEncoding.Merge(parts[2]))
-            merges[merge_pair] = i
+
+    # Validate special tokens
+    for (token, expected_id) in DEFAULT_SPECIAL_TOKENS
+        id = get(vocab_dict, token, nothing)
+        id == nothing && error("Special token $token not found in vocabulary")
+        id != expected_id &&
+            error("Special token $token has incorrect ID: expected $expected_id, got $id")
+    end
+
+    # Initialize BPE tokenizer
+    bpe_merges = Dict{Tuple{Merge, Merge}, Int}()
+    for (i, merge_entry) in enumerate(config.model.merges)
+        try
+            pair = parse_merge(string(merge_entry))
+            bpe_merges[pair] = i
+        catch e
+            @warn "Skipping invalid merge rule: $merge_entry"
         end
     end
-    
-    # Create tokenizer pipeline following BytePairEncoding.jl's approach
-    base_tokenizer = GPT2Tokenization()  # Handles byte-level pre-tokenization
-    bpe = BPE(merges)  # BPE with merge rules
-    
-    # Create tokenizer pipeline with special token handling
-    base_tkr = BPETokenization(base_tokenizer, bpe)
-    normalized_tkr = TextEncodeBase.CodeNormalizer(base_tkr, gpt2_codemap())
-    tokenizer = FlatTokenizer(normalized_tkr)
-    
-    # Initialize with empty cache
-    ModernBertTokenizer(tokenizer, vocab, id_to_token, SPECIAL_TOKEN_IDS, Dict{String, Vector{Int}}())
+
+    # Create tokenizer pipeline
+    base_tokenizer = BPE(bpe_merges)
+    tokenizer = BPETokenizer(
+        CodeNormalizer(
+        BPETokenization(
+            GPT2Tokenization(),
+            base_tokenizer
+        ),
+        gpt2_codemap()
+    )
+    )
+
+    # Create reverse mapping
+    id_to_token = Dict{Int, String}(id => token for (token, id) in vocab_dict)
+    merge!(id_to_token, Dict(id => token for (token, id) in special_tokens))
+
+    # Create lookup vector for Vocab
+    max_id = maximum(values(vocab_dict))
+    vocab_lookup = fill("", 1 + max_id)
+    for (token, id) in vocab_dict
+        vocab_lookup[1 + id] = token
+    end
+
+    vector = PerforatedOverwritableLookupVector(
+        DATLookupVector(vocab_lookup),
+        DictBackedLookupDict(
+            special_tokens, Dict(v => k for (k, v) in special_tokens)))
+
+    vocab = Vocab(vector, "", 0)
+
+    ModernBertEncoder(tokenizer, vocab, special_tokens, id_to_token)
 end
 
+"""
+    tokenize(encoder::ModernBertEncoder, text::String; add_special_tokens::Bool=true)
 
+Tokenize text into tokens using byte-pair encoding (BPE). Special tokens are preserved during
+tokenization, and if `add_special_tokens` is true (default), [CLS] and [SEP] tokens are added
+at the start and end of the sequence respectively.
 
-function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractString; token_ids::Bool=true, add_special_tokens::Bool=false)
-    # Handle empty text
-    if isempty(text)
-        if add_special_tokens
-            return token_ids ? 
-                [tokenizer.special_tokens["[CLS]"], tokenizer.special_tokens["[SEP]"]] :
-                ["[CLS]", "[SEP]"]
-        else
-            return token_ids ? Int[] : String[]
-        end
-    end
-    
-    # Handle special tokens directly
-    if haskey(tokenizer.special_tokens, text)
-        return token_ids ? [tokenizer.special_tokens[text]] : [text]
-    end
-    
-    # Check cache for exact match
-    cache_key = "$(text)_$(add_special_tokens)"
-    if token_ids && haskey(tokenizer.cache, cache_key)
-        return copy(tokenizer.cache[cache_key])
-    end
-    
-    # Process text
-    result = token_ids ? Int[] : String[]
-    
-    # Add [CLS] if needed
-    if add_special_tokens
-        if token_ids
-            push!(result, tokenizer.special_tokens["[CLS]"])
-        else
-            push!(result, "[CLS]")
-        end
-    end
-    
-    # Split text into parts, preserving special tokens
+# Arguments
+- `encoder::ModernBertEncoder`: The encoder instance
+- `text::String`: The text to tokenize
+- `add_special_tokens::Bool=true`: Whether to add [CLS] and [SEP] tokens
+
+# Returns
+- `Vector{String}`: A vector of tokens
+
+# Examples
+```julia-repl
+julia> encoder = ModernBertEncoder("tokenizer.json")
+
+# Basic tokenization with special tokens
+julia> tokenize(encoder, "hello world")
+4-element Vector{String}:
+ "[CLS]"
+ "hello"
+ "world"
+ "[SEP]"
+
+# Tokenization without special tokens
+julia> tokenize(encoder, "hello world", add_special_tokens=false)
+2-element Vector{String}:
+ "hello"
+ "world"
+
+# Special token preservation
+julia> tokenize(encoder, "This is a [MASK] test")
+6-element Vector{String}:
+ "[CLS]"
+ "This"
+ "is"
+ "a"
+ "[MASK]"
+ "test"
+ "[SEP]"
+```
+"""
+function TextEncodeBase.tokenize(
+        encoder::ModernBertEncoder, text::String; add_special_tokens::Bool = true)
+    # Split text into parts while preserving special tokens
     parts = String[]
     current = ""
     i = firstindex(text)
     
-    while i <= lastindex(text)
+    # Sort special tokens by length (longest first) to handle overlapping tokens correctly
+    special_tokens = sort(collect(keys(encoder.special_tokens)), by=length, rev=true)
+    
+    while i ≤ ncodeunits(text)
         # Check for special tokens
         found_special = false
-        for special_token in sort(collect(keys(tokenizer.special_tokens)), by=length, rev=true)
-            token_length = length(special_token)
-            end_idx = i
-            valid_match = true
-            
-            # Use nextind to safely traverse the string
-            for _ in 1:token_length-1
-                if end_idx > lastindex(text)
-                    valid_match = false
-                    break
+        rest_of_text = @view(text[i:end])
+        for token in special_tokens
+            if startswith(rest_of_text, token)
+                # Add accumulated text if any
+                if !isempty(current)
+                    push!(parts, current)
+                    current = ""
                 end
-                end_idx = nextind(text, end_idx)
-            end
-            
-            if valid_match && end_idx <= lastindex(text)
-                potential_match = text[i:end_idx]
-                if potential_match == special_token
-                    # Add accumulated text if any
-                    if !isempty(current)
-                        push!(parts, current)
-                        current = ""
-                    end
-                    # Add the special token
-                    push!(parts, special_token)
-                    i = nextind(text, end_idx)
-                    found_special = true
-                    break
-                end
+                push!(parts, token)
+                i += ncodeunits(token)
+                found_special = true
+                break
             end
         end
-        
         if !found_special
-            current *= text[i]
+            # Handle Unicode characters properly
+            current *= string(text[i])
             i = nextind(text, i)
         end
     end
@@ -173,78 +281,151 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     if !isempty(current)
         push!(parts, current)
     end
-    
+
     # Process each part
+    tokens = String[]
     for part in parts
-        if haskey(tokenizer.special_tokens, part)
-            # Handle special tokens directly
-            if token_ids
-                push!(result, tokenizer.special_tokens[part])
-            else
-                push!(result, part)
-            end
+        if part in special_tokens
+            push!(tokens, part)
         else
-            # Skip empty parts
-            isempty(strip(part)) && continue
+            # Check for special Unicode characters first
+            if any(is_special_unicode, part)
+                push!(tokens, "[UNK]")
+                continue
+            end
             
-            # Tokenize non-special text
-            sentence = Sentence(part)
-            tokens = tokenizer.tokenizer(sentence)
+            # Handle potential unknown tokens
+            local part_tokens
+            try
+                part_tokens = encoder.tokenizer(part)
+            catch
+                push!(tokens, "[UNK]")
+                continue
+            end
             
-            for token in tokens
-                token_str = String(getvalue(token))
-                if token_ids
-                    # Look up token ID, fallback to UNK
-                    token_id = get(tokenizer.vocab, token_str, tokenizer.special_tokens["[UNK]"])
-                    push!(result, token_id)
+            # Check if tokenization produced valid tokens
+            if isempty(part_tokens)
+                push!(tokens, "[UNK]")
+            else
+                # Check if all tokens are valid (in vocabulary and not too long)
+                valid_tokens = true
+                max_token_length = 64  # Reasonable maximum token length
+                for t in part_tokens
+                    # Skip extremely long tokens
+                    if length(t) > max_token_length
+                        valid_tokens = false
+                        break
+                    end
+                    # Check if token exists in vocabulary
+                    if !haskey(encoder.special_tokens, t)
+                        try
+                            # Use TextEncodeBase.lookup for proper token variant handling
+                            token_id = TextEncodeBase.lookup(encoder.vocab, t)
+                            if token_id === nothing || token_id == 0
+                                valid_tokens = false
+                                break
+                            end
+                        catch
+                            valid_tokens = false
+                            break
+                        end
+                    end
+                end
+                
+                if valid_tokens
+                    append!(tokens, part_tokens)
                 else
-                    push!(result, token_str)
+                    push!(tokens, "[UNK]")
                 end
             end
         end
     end
-    
-    # Add [SEP] if needed
+
     if add_special_tokens
-        if token_ids
-            push!(result, tokenizer.special_tokens["[SEP]"])
+        return ["[CLS]"; tokens; "[SEP]"]
+    else
+        return tokens
+    end
+end
+
+"""
+    encode(encoder::ModernBertEncoder, text::AbstractString)
+
+Encode text into token IDs. Automatically adds [CLS] and [SEP] token IDs.
+
+# Examples
+```julia-repl
+julia> encoder = ModernBertEncoder("tokenizer.json")
+julia> encode(encoder, "hello world")
+3-element Vector{Int64}:
+ 50281  # [CLS]
+ 15339  # hello
+  1917  # world
+ 50282  # [SEP]
+```
+"""
+function TextEncodeBase.encode(
+        encoder::ModernBertEncoder, text::AbstractString)
+    # Get tokens first (includes [CLS] and [SEP])
+    tokens = tokenize(encoder, text)
+    
+    # Convert tokens to IDs
+    token_ids = Int[]
+    for token in tokens
+        if token in keys(encoder.special_tokens)
+            push!(token_ids, encoder.special_tokens[token])
         else
-            push!(result, "[SEP]")
+            # Handle regular tokens and unknown tokens
+            token_id = TextEncodeBase.lookup(encoder.vocab, token)
+            if token_id !== nothing && token_id != 0
+                push!(token_ids, token_id)
+            else
+                push!(token_ids, encoder.special_tokens["[UNK]"])
+            end
         end
     end
     
-    # Cache the result if we're returning IDs
-    if token_ids
-        tokenizer.cache[cache_key] = copy(result)
+    return token_ids
+end
+
+"""
+    TextEncodeBase.encode(
+        encoder::ModernBertEncoder,
+        texts::AbstractVector{<:AbstractString})
+
+Encode a vector of texts into token IDs. Automatically pads sequences to the length of the
+longest sequence using the [PAD] token ID and adds [CLS] and [SEP] tokens.
+
+Returns a matrix of token IDs where each column represents a text sequence.
+
+# Examples
+```julia-repl
+julia> encoder = ModernBertEncoder("tokenizer.json")
+julia> encode(encoder, ["hello", "world"])
+4×2 Matrix{Int64}:
+ 50281  50281  # [CLS]
+ 15339   1917  # hello, world
+ 50282  50282  # [SEP]
+ 50283  50283  # [PAD]
+```
+"""
+function TextEncodeBase.encode(
+        encoder::ModernBertEncoder,
+        texts::AbstractVector{<:AbstractString})
+    # Encode each text individually
+    encoded_sequences = [encode(encoder, text) for text in texts]
+    
+    # Find maximum length
+    max_len = maximum(length.(encoded_sequences))
+    pad_id = encoder.special_tokens["[PAD]"]
+    
+    # Create output matrix filled with padding tokens
+    output = fill(pad_id, max_len, length(texts))
+    
+    # Fill in the actual token ids
+    for (i, seq) in enumerate(encoded_sequences)
+        output[1:length(seq), i] = seq
     end
     
-    return result
+    return output
 end
-
-function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractString)
-    # Tokenize with special tokens
-    token_ids = tokenize(tokenizer, text; token_ids=true, add_special_tokens=true)
-    
-    # Truncate to 512 tokens if needed
-    if length(token_ids) > 512
-        token_ids = token_ids[1:512]
-        token_ids[end] = tokenizer.special_tokens["[SEP]"]  # Ensure we end with [SEP]
-    end
-    
-    # Create attention mask and token type IDs
-    token_type_ids = zeros(Int, length(token_ids))
-    attention_mask = ones(Int, length(token_ids))
-    
-    return token_ids, token_type_ids, attention_mask
-end
-
-function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{String})
-    # Process each text and return the tokens with their type IDs and attention masks
-    results = [encode(tokenizer, text) for text in texts]
-    token_ids = [r[1] for r in results]
-    token_type_ids = [r[2] for r in results]
-    attention_masks = [r[3] for r in results]
-    return token_ids, token_type_ids, attention_masks
-end
-
-end # module ModernBertTokenizerImpl
