@@ -54,7 +54,7 @@ const KNOWN_TOKENS = Dict{String, Int}(
 )
 
 # Export core functionality
-export ModernBertTokenizer, tokenize, encode, load_modernbert_tokenizer, vocab_size
+export ModernBertTokenizer, tokenize, encode, load_modernbert_tokenizer, vocab_size, find_longest_token
 
 # Define the ModernBertTokenizer type
 mutable struct ModernBertTokenizer <: AbstractTokenizer
@@ -188,12 +188,50 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
     is_start_or_after_space = start_idx == firstindex(text) || 
         (start_idx > firstindex(text) && isspace(text[prevind(text, start_idx)]))
     
-    # Build token character by character
+    # Try to match full token first (including any punctuation)
+    current_token = text[start_idx:end]
+    variants = if is_start_or_after_space
+        [current_token, "Ġ" * current_token]
+    else
+        [current_token]
+    end
+    
+    # Check for full token match first
+    for variant in variants
+        if haskey(tokenizer.known_tokens, variant)
+            return current_token, tokenizer.known_tokens[variant]
+        elseif haskey(tokenizer.vocab, variant)
+            return current_token, tokenizer.vocab[variant]
+        end
+    end
+    
+    # Build token character by character if no full match
     current_token = ""
+    longest_match = nothing
+    longest_id = nothing
+    last_match = nothing
+    last_match_id = nothing
+    last_match_idx = nothing
+    
+    # Get initial next character information
+    next_idx = nextind(text, current_idx)
+    at_end = next_idx > lastindex(text)
+    
     while current_idx <= lastindex(text)
-        current_token *= text[current_idx]
+        # Build current token from start to current position
+        current_token = text[start_idx:current_idx]
         
-        # Try both regular and Ġ-prefixed variants
+        # Update next character information
+        next_idx = nextind(text, current_idx)
+        at_end = next_idx > lastindex(text)
+        
+        # Check if we're at a word boundary
+        is_word_boundary = at_end || (!at_end && (
+            isspace(text[next_idx]) || 
+            (ispunct(text[next_idx]) && text[next_idx] ∉ ['-', '\''])
+        ))
+        
+        # Try variants with and without Ġ-prefix
         variants = if is_start_or_after_space
             [current_token, "Ġ" * current_token]
         else
@@ -201,47 +239,201 @@ function find_longest_token(tokenizer::ModernBertTokenizer, text::String, start_
         end
         
         # Check each variant against token dictionaries
+        found_match = false
         for variant in variants
             # Check known_tokens first (highest priority)
             if haskey(tokenizer.known_tokens, variant)
-                # Always use the variant that matched (could be Ġ-prefixed)
-                longest_match = variant
+                longest_match = current_token
                 longest_id = tokenizer.known_tokens[variant]
-                # Don't break here - keep looking for longer matches
+                last_match = longest_match
+                last_match_id = longest_id
+                last_match_idx = current_idx
+                found_match = true
+                break
             end
             
             # Then check main vocabulary if we haven't found in known_tokens
-            if longest_id === nothing && haskey(tokenizer.vocab, variant)
-                # Always use the variant that matched (could be Ġ-prefixed)
-                longest_match = variant
+            if haskey(tokenizer.vocab, variant)
+                longest_match = current_token
                 longest_id = tokenizer.vocab[variant]
-                # Don't break here - keep looking for longer matches
+                last_match = longest_match
+                last_match_id = longest_id
+                last_match_idx = current_idx
+                found_match = true
+                break
             end
         end
         
-        # If we've found a match and the next character would break the token,
-        # return the current match (optimization)
-        if !isempty(longest_match)
-            next_idx = nextind(text, current_idx)
-            if next_idx > lastindex(text) || isspace(text[next_idx]) || ispunct(text[next_idx])
-                return longest_match, longest_id
+        # Special handling for "Mr." case
+        if current_token == "Mr" && !at_end && text[next_idx] == '.'
+            mr_with_dot = text[start_idx:next_idx]
+            if haskey(tokenizer.known_tokens, mr_with_dot)
+                return mr_with_dot, tokenizer.known_tokens[mr_with_dot]
+            elseif haskey(tokenizer.vocab, mr_with_dot)
+                return mr_with_dot, tokenizer.vocab[mr_with_dot]
+            end
+            # If "Mr." isn't in vocab, return just "Mr" if it's a known token
+            if haskey(tokenizer.known_tokens, current_token)
+                return current_token, tokenizer.known_tokens[current_token]
+            elseif haskey(tokenizer.vocab, current_token)
+                return current_token, tokenizer.vocab[current_token]
             end
         end
+
+        # Check if we're at a word boundary
+        is_word_boundary = at_end || isspace(text[next_idx]) || (ispunct(text[next_idx]) && text[next_idx] ∉ ['-', '\''])
         
-        # Move to next character safely
+        # For compound words, try to match the full word first
+        if !at_end && (text[next_idx] ∈ ['-', '\''])
+            # Try to find the end of the compound word
+            compound_end_idx = next_idx
+            while compound_end_idx < lastindex(text)
+                next_compound_idx = nextind(text, compound_end_idx)
+                if next_compound_idx > lastindex(text)
+                    break
+                end
+                next_char = text[next_compound_idx]
+                # Stop at spaces or punctuation (except hyphens and apostrophes)
+                if isspace(next_char) || (ispunct(next_char) && next_char ∉ ['-', '\''])
+                    break
+                end
+                # Include the character and move to next
+                compound_end_idx = next_compound_idx
+            end
+            
+            # Always include the last character of the compound word
+            if compound_end_idx < lastindex(text)
+                compound_end_idx = nextind(text, compound_end_idx)
+            
+            # Try the full compound word first
+            compound_token = text[start_idx:compound_end_idx]
+            for variant in (is_start_or_after_space ? [compound_token, "Ġ" * compound_token] : [compound_token])
+                if haskey(tokenizer.known_tokens, variant)
+                    return compound_token, tokenizer.known_tokens[variant]
+                elseif haskey(tokenizer.vocab, variant)
+                    return compound_token, tokenizer.vocab[variant]
+                end
+            end
+            
+            # If full compound word isn't found, try progressive subparts
+            current_start = start_idx
+            while current_start <= compound_end_idx
+                # Try each possible end position for the current start
+                current_end = nextind(text, current_start)
+                while current_end <= compound_end_idx
+                    subtoken = text[current_start:current_end]
+                    for variant in (current_start == start_idx && is_start_or_after_space ? 
+                                  [subtoken, "Ġ" * subtoken] : [subtoken])
+                        if haskey(tokenizer.known_tokens, variant)
+                            return subtoken, tokenizer.known_tokens[variant]
+                        elseif haskey(tokenizer.vocab, variant)
+                            return subtoken, tokenizer.vocab[variant]
+                        end
+                    end
+                    current_end = nextind(text, current_end)
+                end
+                # Move start position forward if no matches found
+                current_start = nextind(text, current_start)
+            end
+            
+            # If no subparts match, return the first character
+            return text[start_idx:start_idx], get(tokenizer.vocab, text[start_idx:start_idx], 
+                   tokenizer.special_tokens["[UNK]"])
+        end
+        
+        if found_match && is_word_boundary
+            return longest_match, longest_id
+        end
+        
         next_idx = nextind(text, current_idx)
-        if next_idx > lastindex(text)
-            break
+        at_end = next_idx > lastindex(text)
+        
+        # Check if we're at a word boundary
+        is_word_boundary = at_end || isspace(text[next_idx]) || (ispunct(text[next_idx]) && text[next_idx] ∉ ['-', '\''])
+        
+        # If we found a match and we're at a word boundary, return it
+        if found_match && is_word_boundary
+            # Special handling for punctuation after known tokens
+            if !at_end && ispunct(text[next_idx])
+                # Try to include the punctuation in the token
+                extended_token = text[start_idx:next_idx]
+                if haskey(tokenizer.known_tokens, extended_token)
+                    return extended_token, tokenizer.known_tokens[extended_token]
+                elseif haskey(tokenizer.vocab, extended_token)
+                    return extended_token, tokenizer.vocab[extended_token]
+                end
+            end
+            return longest_match, longest_id
         end
-        current_idx = next_idx
+        
+        # Handle punctuation specially
+        if ispunct(text[current_idx])
+            # For compound words (with hyphens/apostrophes), continue building token
+            if (text[current_idx] ∈ ['-', '\'']) && !at_end && !isspace(text[next_idx])
+                current_idx = next_idx
+                continue
+            end
+            
+            # Return the last match if we have one
+            if last_match !== nothing
+                # If it's a period after "Mr", keep them together
+                if text[current_idx] == '.' && last_match == "Mr"
+                    current_token = last_match * "."
+                    if haskey(tokenizer.known_tokens, current_token)
+                        return current_token, tokenizer.known_tokens[current_token]
+                    end
+                end
+                return last_match, last_match_id
+            end
+            
+            # If it's a standalone punctuation, return it as a token
+            if current_idx == start_idx || (current_idx > start_idx && isspace(text[prevind(text, current_idx)]))
+                return string(text[current_idx]), get(tokenizer.vocab, string(text[current_idx]), tokenizer.special_tokens["[UNK]"])
+            end
+            
+            # For other punctuation, try without it and return if we find a match
+            token_without_punct = text[start_idx:prevind(text, current_idx)]
+            if !isempty(token_without_punct)
+                for variant in (is_start_or_after_space ? [token_without_punct, "Ġ" * token_without_punct] : [token_without_punct])
+                    if haskey(tokenizer.known_tokens, variant)
+                        return token_without_punct, tokenizer.known_tokens[variant]
+                    elseif haskey(tokenizer.vocab, variant)
+                        return token_without_punct, tokenizer.vocab[variant]
+                    end
+                end
+            end
+            
+            # If we can't match anything, return just the punctuation as a token
+            return string(text[current_idx]), get(tokenizer.vocab, string(text[current_idx]), tokenizer.special_tokens["[UNK]"])
+        end
+        
+        # If we've found a match but haven't hit a word boundary yet, try to find a longer match
+        if found_match && !at_end
+            next_char = text[next_idx]
+            if !isspace(next_char) && (!ispunct(next_char) || next_char ∈ ['-', '\''])
+                current_idx = next_idx
+                continue
+            end
+        end
+        
+        # Move to next character if we haven't already
+        if current_idx < next_idx
+            current_idx = next_idx
+        end
     end
     
-    # If no match found, return single character as UNK token
-    if isempty(longest_match)
-        return text[start_idx:start_idx], tokenizer.special_tokens["[UNK]"]
+    # Return the last successful match if we have one
+    if last_match !== nothing
+        return last_match, last_match_id
     end
     
-    return longest_match, longest_id
+    # If we have a longest match, return it
+    if longest_match !== nothing
+        return longest_match, longest_id
+    end
+    
+    # No match found, return the first character as UNK
+    return string(text[start_idx]), tokenizer.special_tokens["[UNK]"]
 end
 
 # Tokenize text into subwords
@@ -461,16 +653,42 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         end
             
             # Try to match the full word with cached dictionaries
-            # Try Ġ-prefixed first for words after space
-            prefixed_word = "Ġ" * full_word
-            if haskey(known_tokens, prefixed_word)
-                push!(tokens, known_tokens[prefixed_word])
-                i = word_end
-                continue
-            elseif haskey(vocab, prefixed_word)
-                push!(tokens, vocab[prefixed_word])
-                i = word_end
-                continue
+            # For words after space, try with and without Ġ prefix based on context
+            # For words like "O'Neill", try Ġ prefix first
+            if startswith(full_word, "O'") || startswith(full_word, "O-")
+                prefixed_word = "Ġ" * full_word
+                if haskey(known_tokens, prefixed_word)
+                    push!(tokens, known_tokens[prefixed_word])
+                    i = word_end
+                    continue
+                elseif haskey(vocab, prefixed_word)
+                    push!(tokens, vocab[prefixed_word])
+                    i = word_end
+                    continue
+                end
+            else
+                # For other words, try without prefix first
+                if haskey(known_tokens, full_word)
+                    push!(tokens, known_tokens[full_word])
+                    i = word_end
+                    continue
+                elseif haskey(vocab, full_word)
+                    push!(tokens, vocab[full_word])
+                    i = word_end
+                    continue
+                end
+                
+                # Then try with Ġ prefix
+                prefixed_word = "Ġ" * full_word
+                if haskey(known_tokens, prefixed_word)
+                    push!(tokens, known_tokens[prefixed_word])
+                    i = word_end
+                    continue
+                elseif haskey(vocab, prefixed_word)
+                    push!(tokens, vocab[prefixed_word])
+                    i = word_end
+                    continue
+                end
             end
             
             # Try without prefix
@@ -537,6 +755,18 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
             # Handle common titles with trailing period
             if endswith(full_word, '.')
                 base_word = full_word[1:prevind(full_word, lastindex(full_word))]
+                # Try base word without prefix first for titles like "Mr."
+                if haskey(known_tokens, base_word)
+                    push!(tokens, known_tokens[base_word])
+                    if haskey(known_tokens, ".")
+                        push!(tokens, known_tokens["."])
+                    elseif haskey(vocab, ".")
+                        push!(tokens, vocab["."])
+                    end
+                    i = word_end
+                    continue
+                end
+                # Then try with Ġ prefix
                 prefixed_base = "Ġ" * base_word
                 if haskey(known_tokens, prefixed_base)
                     push!(tokens, known_tokens[prefixed_base])
@@ -586,12 +816,10 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 if haskey(known_tokens, full_word)
                     push!(tokens, known_tokens[full_word])
                     i = word_end
-                    last_was_space = false
                     continue
                 elseif haskey(vocab, full_word)
                     push!(tokens, vocab[full_word])
                     i = word_end
-                    last_was_space = false
                     continue
                 end
                 
@@ -634,7 +862,6 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                     current_pos = char_end
                 end
                 i = word_end
-                last_was_space = false
                 continue
             end
             
@@ -678,7 +905,6 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 # If neither version is known, emit [UNK] token
                 push!(tokens, tokenizer.special_tokens["[UNK]"])
                 i = nextind(text, i)
-                last_was_space = false  # Reset space tracking after unknown token
                 continue  # Return to start of loop
             end
         end
