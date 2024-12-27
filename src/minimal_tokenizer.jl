@@ -806,23 +806,38 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractStr
     # Sort special tokens by length (longest first) to avoid partial matches
     sorted_tokens = sort(collect(tokenizer.special_tokens), by=x->length(x.first), rev=true)
     
-    i = 1
+    i = firstindex(text)
     while i <= text_length
         found_special = false
         for (token, id) in sorted_tokens
             token_len = length(token)
-            if i + token_len - 1 <= text_length
-                if text[i:i+token_len-1] == token
-                    # Add text before special token
-                    if i > current_start
-                        push!(parts, text[current_start:i-1])
+            # Calculate end index safely using nextind
+            end_idx = i
+            try
+                for _ in 1:token_len-1
+                    end_idx = nextind(text, end_idx)
+                end
+                if end_idx <= text_length
+                    current_text = text[i:end_idx]
+                    if current_text == token
+                        # Add text before special token
+                        if i > current_start
+                            push!(parts, text[current_start:prevind(text, i)])
+                        end
+                        # Add special token
+                        push!(parts, token)
+                        # Move index past token safely
+                        i = nextind(text, end_idx)
+                        current_start = i
+                        found_special = true
+                        break
                     end
-                    # Add special token
-                    push!(parts, token)
-                    i += token_len
-                    current_start = i
-                    found_special = true
-                    break
+                end
+            catch e
+                if e isa StringIndexError
+                    break  # Skip to next character if we hit invalid UTF-8 boundaries
+                else
+                    rethrow(e)
                 end
             end
         end
