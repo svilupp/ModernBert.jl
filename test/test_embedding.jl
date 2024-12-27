@@ -1,5 +1,4 @@
-using ModernBert: BertModel, encode, ModernBertTokenizer
-using ModernBert: BertModel, embed
+using ModernBert: BertModel, embed, encode, ModernBertEncoder
 MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
 
 @testset "Model initialization and basic functionality" begin
@@ -7,21 +6,17 @@ MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
     model = BertModel(model_path = MODEL_PATH)
     @test model isa BertModel
     @test model.session isa ONNXRunTime.InferenceSession
-    @test model.tokenizer isa ModernBertTokenizer
+    @test model.encoder isa ModernBertEncoder
 
     # Test model configuration
-    @test haskey(model.tokenizer.vocab, "[CLS]")
-    @test haskey(model.tokenizer.vocab, "[SEP]")
-    @test haskey(model.tokenizer.vocab, "[PAD]")
+    @test haskey(model.encoder.vocab, "[CLS]")
+    @test haskey(model.encoder.vocab, "[SEP]")
+    @test haskey(model.encoder.vocab, "[PAD]")
 
     # Test basic functionality
     text = "Hello, world!"
-    token_ids, token_type_ids, attention_mask = encode(model, text)
-    @test length(token_ids) == length(token_type_ids)
-    @test length(token_ids) == length(attention_mask)
+    token_ids = encode(model, text)
     @test all(x -> x isa Integer, token_ids)
-    @test all(x -> x isa Integer, token_type_ids)
-    @test all(x -> x in (0, 1), attention_mask)
 end
 
 @testset "Text embedding functionality" begin

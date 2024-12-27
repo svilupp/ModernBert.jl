@@ -5,6 +5,9 @@ using ONNXRunTime
 const ORT = ONNXRunTime
 
 ## Setup the tests
+REPO_URL = "https://huggingface.co/answerdotai/ModernBERT-base"
+MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
+
 @testset "ModernBert.jl" begin
     include("setup.jl")
     include("test_tokenizer.jl")
