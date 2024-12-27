@@ -245,7 +245,7 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                 
                 # Single-pass punctuation handling
                 for (i, char) in enumerate(part)
-                    if char in ('.', ',', '!', '?')
+                    if char in PUNCTUATION
                         if !isempty(current_part)
                             push!(processed_parts, current_part)
                             current_part = ""
