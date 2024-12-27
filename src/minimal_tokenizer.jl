@@ -1122,5 +1122,3 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, texts::Vector{Str
     @assert size(tokens_matrix) == size(types_matrix) == size(mask_matrix) "Matrix dimensions must match"
     return tokens_matrix, types_matrix, mask_matrix
 end
-
-end # module ModernBertTokenizerImpl
