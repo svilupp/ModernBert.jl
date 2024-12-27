@@ -415,10 +415,26 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 break
             end
             
-            # Handle punctuation boundaries
+            # Handle punctuation boundaries more intelligently
             curr_is_punct = ispunct(curr_char)
-            if curr_is_punct != in_punctuation && word_end > i
-                break
+            
+            # Special handling for apostrophes and hyphens in compound words
+            if curr_is_punct
+                # Allow apostrophes and hyphens within words
+                if (curr_char == '\'' || curr_char == '-') && word_end > i
+                    # Look ahead to see if there are more word characters
+                    next_pos = nextind(text, word_end)
+                    if next_pos <= text_length && !isspace(text[next_pos])
+                        # Continue if we're in the middle of a compound word
+                        word_end = next_pos
+                        continue
+                    end
+                end
+                
+                # For other punctuation, break if we're transitioning
+                if curr_is_punct != in_punctuation && word_end > i
+                    break
+                end
             end
             in_punctuation = curr_is_punct
             
@@ -456,6 +472,47 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                     push!(tokens, vocab[prefixed_word])
                     i = word_end
                     last_was_space = false
+                    continue
+                elseif haskey(known_tokens, full_word)
+                    # Try without Ġ prefix for compound words
+                    push!(tokens, known_tokens[full_word])
+                    i = word_end
+                    last_was_space = false
+                    continue
+                elseif haskey(vocab, full_word)
+                    push!(tokens, vocab[full_word])
+                    i = word_end
+                    last_was_space = false
+                    continue
+                end
+                
+                # Try character by character for UTF-8 and special characters
+                if !isascii(full_word)
+                    current_pos = 1
+                    while current_pos <= ncodeunits(full_word)
+                        char_end = nextind(full_word, current_pos)
+                        char = full_word[current_pos:prevind(full_word, char_end)]
+                        char_token = last_was_space ? "Ġ" * char : char
+                        
+                        if haskey(known_tokens, char_token)
+                            push!(tokens, known_tokens[char_token])
+                        elseif haskey(vocab, char_token)
+                            push!(tokens, vocab[char_token])
+                        else
+                            # Try without Ġ prefix for special characters
+                            if haskey(known_tokens, char)
+                                push!(tokens, known_tokens[char])
+                            elseif haskey(vocab, char)
+                                push!(tokens, vocab[char])
+                            else
+                                push!(tokens, tokenizer.special_tokens["[UNK]"])
+                            end
+                        end
+                        
+                        current_pos = char_end
+                        last_was_space = false
+                    end
+                    i = word_end
                     continue
                 end
                 
