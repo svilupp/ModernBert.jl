@@ -376,8 +376,9 @@ function TextEncodeBase.encode(
             push!(token_ids, encoder.special_tokens[token])
         else
             # Handle regular tokens and unknown tokens
-            if haskey(encoder.vocab, token)
-                push!(token_ids, encoder.vocab[token])
+            token_id = TextEncodeBase.lookup(encoder.vocab, token)
+            if token_id !== nothing && token_id != 0
+                push!(token_ids, token_id)
             else
                 push!(token_ids, encoder.special_tokens["[UNK]"])
             end
