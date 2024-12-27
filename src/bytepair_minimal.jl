@@ -1,18 +1,34 @@
 module ModernBertTokenizerImpl
 
-using BytePairEncoding
 using TextEncodeBase
-using BytePairEncoding: BPE, BPETokenization, BPETokenizer, GPT2Tokenization, Merge, parse_merge
+using BytePairEncoding: BPE, BPETokenization, BPETokenizer, GPT2Tokenization, Merge, parse_merge, gpt2_codemap
 using TextEncodeBase: encode, tokenize, FlatTokenizer, CodeNormalizer
 using TextEncodeBase: Sentence, TokenStages, TokenStage, SentenceStage, WordStage, ParentStages, getvalue
-using BytePairEncoding: gpt2_codemap
 using JSON3
+using Base: ones, zeros
 
 # Import functions we want to extend
 import TextEncodeBase: tokenize, encode
 
 # Export types and functions
-export ModernBertTokenizer, encode, tokenize, load_modernbert_tokenizer
+export ModernBertTokenizer, encode, tokenize, load_modernbert_tokenizer, add_special_tokens
+
+# Define module-level constants and flags
+const include_special_tokens = true  # Default flag for special token inclusion
+
+# Define module-level constants
+const DEFAULT_SPECIAL_TOKENS = Dict{String, Int}(
+    "[UNK]" => 50280,
+    "[CLS]" => 50281,
+    "[SEP]" => 50282,
+    "[PAD]" => 50283,
+    "[MASK]" => 50284,
+    " " => 50273,      # Space token
+    "  " => 50274,     # Double space token
+    "   " => 50275,    # Triple space token
+    "\n" => 50286,     # Newline token
+    "\t" => 50287      # Tab token
+)
 
 """
     ModernBertTokenizer
@@ -33,20 +49,11 @@ end
 Add special tokens to the tokenizer's vocabulary and special_tokens dictionaries.
 """
 function add_special_tokens(tokenizer::ModernBertTokenizer)
-    # Initialize special tokens with their specific IDs
-    special_tokens = Dict{String, Int}(
-        "[UNK]" => 50280,
-        "[CLS]" => 50281,
-        "[SEP]" => 50282,
-        "[PAD]" => 50283,
-        "[MASK]" => 50284
-    )
-    
-    # Update tokenizer's special_tokens dictionary
-    tokenizer.special_tokens = special_tokens
+    # Update tokenizer's special_tokens dictionary with module-level constants
+    tokenizer.special_tokens = DEFAULT_SPECIAL_TOKENS
     
     # Add special tokens to vocabulary if not present
-    for (token, id) in special_tokens
+    for (token, id) in DEFAULT_SPECIAL_TOKENS
         tokenizer.vocab[token] = id
         tokenizer.id_to_token[id] = token
     end
@@ -71,19 +78,8 @@ Create a ModernBertTokenizer from a configuration file.
 function ModernBertTokenizer(config_path::String)
     config = JSON3.read(read(config_path, String))
     
-    # Create special tokens mapping first
-    special_tokens = Dict{String, Int}(
-        "[UNK]" => 50280,  # Start with UNK token
-        "[CLS]" => 50281,
-        "[SEP]" => 50282,
-        "[PAD]" => 50283,
-        "[MASK]" => 50284,
-        " " => 50273,      # Space token
-        "  " => 50274,     # Double space token
-        "   " => 50275,    # Triple space token
-        "\n" => 50286,     # Newline token
-        "\t" => 50287      # Tab token
-    )
+    # Use module-level special tokens mapping
+    special_tokens = copy(DEFAULT_SPECIAL_TOKENS)
     
     # Create vocabulary mapping directly from config
     vocab = Dict{String, Int}()
@@ -150,12 +146,12 @@ function ModernBertTokenizer(config_path::String)
     ModernBertTokenizer(tokenizer, vocab, special_tokens, id_to_token, Dict{String, Vector{Int}}())
 end
 
-function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=true, add_special_tokens::Bool=true)
+function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=true, include_special_tokens::Bool=true)
     # Initialize result array
     result = token_ids ? Int[] : String[]
     
     # Add CLS token if requested
-    if add_special_tokens
+    if include_special_tokens
         if token_ids
             push!(result, tokenizer.special_tokens["[CLS]"])
         else
@@ -322,7 +318,7 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
     end
     
     # Add SEP token if requested
-    if add_special_tokens
+    if include_special_tokens
         if token_ids
             push!(result, tokenizer.special_tokens["[SEP]"])
         else
@@ -342,8 +338,8 @@ function encode(tokenizer::ModernBertTokenizer, text::String)
             tokenizer.special_tokens["[SEP]"]
         ]
     else
-        # For regular text, use tokenize with explicit add_special_tokens parameter
-        tokens = tokenize(tokenizer, text; add_special_tokens=true)
+        # For regular text, use tokenize with special tokens
+        tokens = tokenize(tokenizer, text; token_ids=true, include_special_tokens=true)
     end
     attention_mask = ones(Int, length(tokens))
     token_type_ids = zeros(Int, length(tokens))
@@ -382,4 +378,4 @@ function ModernBertTokenizer()
     ModernBertTokenizer(config_path)
 end
 
-end # module ModernBertTokenizerImpl
+end  # ModernBertTokenizerImpl
