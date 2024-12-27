@@ -19,6 +19,9 @@ const SPECIAL_TOKENS = Dict{String, Int}(
     "[END]" => 50288    # End token
 )
 
+# Define punctuation characters
+const PUNCTUATION = Set(['[', ']', '.', ',', '!', '?', '-', '@', '{', '}', '\''])
+
 const REQUIRED_TOKENS = Dict{String, Int}(
     " " => 50275,  # space token
     "Ġ" => 50286,  # GPT-2 space token
@@ -680,7 +683,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         end
         
         # Handle pure punctuation strings
-        if all(c -> ispunct(c) || c in ['[', ']', '.', ',', '!', '?', '-', '@', '{', '}', '\''], full_word)
+        if all(c -> ispunct(c) || c in PUNCTUATION, full_word)
             # Try the full punctuation sequence first
             if haskey(known_tokens, full_word)
                 push!(tokens, known_tokens[full_word])
