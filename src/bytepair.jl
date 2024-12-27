@@ -319,8 +319,9 @@ function TextEncodeBase.tokenize(
                     # Check if token exists in vocabulary
                     if !haskey(encoder.special_tokens, t)
                         try
-                            # Use direct vocabulary lookup
-                            if !haskey(encoder.vocab, t)
+                            # Use TextEncodeBase.lookup for proper token variant handling
+                            token_id = TextEncodeBase.lookup(encoder.vocab, t)
+                            if token_id === nothing || token_id == 0
                                 valid_tokens = false
                                 break
                             end
