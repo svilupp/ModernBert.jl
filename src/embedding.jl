@@ -126,27 +126,7 @@ function embed(model::BertModel,
     return sentence_embedding
 end
 
-# function embed(model::BertModel, texts::AbstractVector{<:AbstractString};
-#         verbose::Bool = false, kwargs...)
-#     token_ids = encode(model, texts)
-
-#     inputs = Dict(
-#         "input_ids" => Int64.(token_ids),
-#         "attention_mask" => Int64.(attention_mask)
-#     )
-
-#     outputs = model.session(inputs)
-#     logits = first(values(outputs)) .|> Float32
-
-#     sentence_embeddings = mean_pooling(logits, attention_mask; verbose)
-
-#     return sentence_embeddings
-# end
-
-function (m::BertModel)(text::AbstractString; kwargs...)
+function (m::BertModel)(
+        text::Union{AbstractString, AbstractVector{<:AbstractString}}; kwargs...)
     return embed(m, text; kwargs...)
-end
-
-function (m::BertModel)(texts::AbstractVector{<:AbstractString}; kwargs...)
-    return embed(m, texts; kwargs...)
 end

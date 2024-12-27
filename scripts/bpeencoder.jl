@@ -84,14 +84,3 @@ for id in [0]
         println("Token ID $id not found in vocabulary")
     end
 end
-
-using ModernBert
-enc = ModernBertEncoder("data/tokenizer.json")
-
-tokens = tokenize(enc, "hello world")
-encode(enc, "hello world")
-encode(enc, ["hello world", "Very long sentence with more tokens"])
-
-model = BertModel()
-embed(model, "hello world")
-embed(model, ["hello world", "Very long sentence with more tokens"])
