@@ -266,7 +266,8 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                     # Skip empty parts
                     isempty(strip(subpart)) && continue
                     
-                    # Normalize whitespace
+                    # Preserve whitespace information
+                    has_leading_space = !isempty(subpart) && isspace(subpart[1])
                     normalized_part = strip(subpart)
                     is_first_in_text = i == 1 && k == 1 && all(isspace, subpart[1:prevind(subpart, firstindex(normalized_part))])
                     
@@ -277,6 +278,11 @@ function tokenize(tokenizer::ModernBertTokenizer, text::String; token_ids::Bool=
                         for (j, token) in enumerate(tokens)
                             token_str = getvalue(token)
                             isempty(token_str) && continue
+                            
+                            # Add Ġ prefix for tokens after whitespace
+                            if has_leading_space && j == 1 && !startswith(token_str, 'Ġ')
+                                token_str = "Ġ" * token_str
+                            end
                             
                             if token_ids
                                 # Handle punctuation tokens directly
