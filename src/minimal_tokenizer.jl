@@ -832,6 +832,7 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractStr
         push!(tokens, merged_special_tokens["[CLS]"])
         push!(token_types, 0)
         push!(attention_mask, 1)
+    end
     
     # Process text character by character
     i = firstindex(text)
