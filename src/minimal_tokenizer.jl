@@ -308,32 +308,20 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     # Initialize tokens array and handle special cases
     local tokens = Int[]
     
-    # Debug output
-    println("Starting tokenization of: \"$text\"")
-    
     # Early returns for special cases
     if isempty(text)
-        println("Empty text, returning empty tokens array")
         return tokens
     elseif all(isspace, text)
-        println("Text contains only whitespace")
         # Handle whitespace tokens (50275)
         if haskey(tokenizer.known_tokens, "Ġ")
-            println("Found space token 'Ġ' in known_tokens")
             return [tokenizer.known_tokens["Ġ"]]
         elseif haskey(tokenizer.vocab, "Ġ")
-            println("Found space token 'Ġ' in vocab")
             return [tokenizer.vocab["Ġ"]]
         elseif haskey(tokenizer.known_tokens, " ")
-            println("Found space token ' ' in known_tokens")
             return [tokenizer.known_tokens[" "]]
         elseif haskey(tokenizer.vocab, " ")
-            println("Found space token ' ' in vocab")
             return [tokenizer.vocab[" "]]
         else
-            println("Warning: Space token not found in any dictionary")
-            println("known_tokens keys: ", join(keys(tokenizer.known_tokens), ", "))
-            println("vocab keys starting with space: ", join(filter(k -> startswith(k, " ") || startswith(k, "Ġ"), keys(tokenizer.vocab)), ", "))
             return tokens
         end
     end
@@ -342,9 +330,6 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
     known_tokens = tokenizer.known_tokens
     special_tokens = tokenizer.special_tokens
     vocab = tokenizer.vocab
-    
-    # Debug dictionary sizes
-    println("Dictionary sizes - Known tokens: $(length(known_tokens)), Vocab: $(length(vocab))")
     
     # Ensure known_tokens is initialized
     if isnothing(known_tokens)
@@ -403,13 +388,10 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
             
             # Safety check for empty strings
             if i > word_end
-                println("  Invalid indices detected: i=$i, word_end=$word_end")
                 break
             end
             
             curr_char = text[word_end]
-            println("  Checking boundary at position $word_end: \"$curr_char\"")
-            
             # Stop at whitespace
             if isspace(curr_char)
                 break
@@ -418,11 +400,38 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
             # Handle punctuation boundaries more intelligently
             curr_is_punct = ispunct(curr_char)
             
-            # Special handling for apostrophes and hyphens in compound words
+            # Special handling for punctuation
             if curr_is_punct
-                # Allow apostrophes and hyphens within words
+                # Try to match standalone punctuation first
+                punct_token = string(curr_char)
+                if haskey(known_tokens, punct_token)
+                    # Found a standalone punctuation token
+                    if word_end == i
+                        push!(tokens, known_tokens[punct_token])
+                        i = nextind(text, i)
+                        # Check if we've reached the end of the text
+                        if i > text_length
+                            break
+                        end
+                        last_was_space = false
+                        continue
+                    end
+                elseif haskey(vocab, punct_token)
+                    # Found a standalone punctuation token in vocab
+                    if word_end == i
+                        push!(tokens, vocab[punct_token])
+                        i = nextind(text, i)
+                        # Check if we've reached the end of the text
+                        if i > text_length
+                            break
+                        end
+                        last_was_space = false
+                        continue
+                    end
+                end
+                
+                # Handle apostrophes and hyphens within words
                 if (curr_char == '\'' || curr_char == '-') && word_end > i
-                    # Look ahead to see if there are more word characters
                     next_pos = nextind(text, word_end)
                     if next_pos <= text_length && !isspace(text[next_pos])
                         # Continue if we're in the middle of a compound word
@@ -448,14 +457,28 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         
         # Extract word safely
         if i >= word_end
-            println("  Skipping empty word at position $i")
-            i = nextind(text, i)  # Advance to next character
+            # Check if we can safely advance
+            if i >= text_length
+                break
+            end
+            next_i = nextind(text, i)
+            if next_i > text_length
+                break
+            end
+            i = next_i  # Advance to next character
             continue
         end
         full_word = text[i:prevind(text, word_end)]
         if isempty(full_word)
-            println("  Skipping empty word")
-            i = nextind(text, i)  # Advance to next character
+            # Check if we can safely advance
+            if i >= text_length
+                break
+            end
+            next_i = nextind(text, i)
+            if next_i > text_length
+                break
+            end
+            i = next_i  # Advance to next character
             continue
         end
             
@@ -584,30 +607,23 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
                 end
                 
                 # If we can't match the full sequence, process character by character
-                println("  Processing characters individually for: \"$full_word\"")
                 char_count = 0
                 for j in i:prevind(text, word_end)
                     char = text[j:j]
-                    println("    Processing character: \"$char\"")
                     if haskey(KNOWN_TOKENS, char)
-                        println("    Found in KNOWN_TOKENS")
                         push!(tokens, KNOWN_TOKENS[char])
                     elseif haskey(tokenizer.vocab, char)
-                        println("    Found in vocab")
                         push!(tokens, tokenizer.vocab[char])
                     else
-                        println("    Using [UNK] token")
                         push!(tokens, tokenizer.special_tokens["[UNK]"])
                     end
                     char_count += 1
                     if char_count > 100  # Safety limit
-                        @warn "Character processing limit exceeded"
                         break
                     end
                 end
                 i = word_end
                 last_was_space = false
-                println("  Finished processing characters")
                 continue  # Return to start of loop
             end
             
@@ -746,6 +762,7 @@ function TextEncodeBase.tokenize(tokenizer::ModernBertTokenizer, text::AbstractS
         push!(tokens, KNOWN_TOKENS["."])  # Use period token (15)
     end
     
+    # Note: [CLS] and [SEP] tokens are added by the encode function
     return tokens
 end
 
@@ -769,10 +786,13 @@ function TextEncodeBase.encode(tokenizer::ModernBertTokenizer, text::AbstractStr
     end
     
     # Add main tokens
-    append!(tokens, tokenize(tokenizer, text))
+    main_tokens = tokenize(tokenizer, text)
+    append!(tokens, main_tokens)
     
-    # Add SEP token at end
-    push!(tokens, tokenizer.special_tokens["[SEP]"])
+    # Add SEP token at end if not already present
+    if isempty(tokens) || tokens[end] != tokenizer.special_tokens["[SEP]"]
+        push!(tokens, tokenizer.special_tokens["[SEP]"])
+    end
     
     # Truncate to maximum length (512 tokens)
     if length(tokens) > 512
