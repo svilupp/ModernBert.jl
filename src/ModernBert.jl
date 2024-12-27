@@ -4,11 +4,10 @@ module ModernBert
 using JSON3
 using Downloads
 using TextEncodeBase
-using BytePairEncoding
 using Base: ones, zeros
 
 # Import specific types and methods for extension
-import TextEncodeBase: AbstractTextEncoder, encode, tokenize
+import TextEncodeBase: AbstractTextEncoder, AbstractTokenizer, encode, tokenize
 
 # Include core tokenizer implementation
 include("minimal_tokenizer.jl")
