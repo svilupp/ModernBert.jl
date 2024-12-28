@@ -19,7 +19,7 @@ using Base: ones, zeros
 # Import TextEncodeBase types and methods for extension
 import TextEncodeBase: AbstractTokenizer, encode, tokenize
 
-export ModernBertEncoder, tokenize, encode
+export ModernBertEncoder, tokenize, encode, decode
 include("bytepair.jl")
 
 export BertModel, embed

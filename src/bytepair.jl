@@ -71,6 +71,47 @@ function (e::ModernBertEncoder)(x::AbstractString)
     TextEncodeBase.lookup(e.vocab, encode_indices(e, x))
 end
 
+struct MaskTokenization{T <: AbstractTokenization} <: TextEncodeBase.WrappedTokenization{T}
+    base::T
+    mask_token::String
+end
+
+# Override splittability to indicate we want to handle mask tokens
+TextEncodeBase.splittability(::Nothing, ::MaskTokenization, ::WordStage) = Splittable()
+
+# Define the actual splitting behavior
+# function TextEncodeBase.splitting(::Nothing, t::MaskTokenization, w::WordStage)
+#     text = getvalue(w)
+#     if text == t.mask_token
+#         return [text]  # Return as-is, no space prefix
+#     end
+#     return TextEncodeBase.splitting(t.base, w)  # Otherwise use base tokenizer
+# end
+function TextEncodeBase.splitting(p::ParentStages, t::MaskTokenization, s::SentenceStage)
+    text = getvalue(s)
+    println("Input text: ", text)
+    result = TextEncodeBase.splitting(p, t.base, s)
+    println("After base splitting: ", result)
+    return result
+end
+
+function TextEncodeBase.splitting(::Nothing, t::MaskTokenization, w::WordStage)
+    text = getvalue(w)
+    println("Word stage text: ", text)
+    if text == t.mask_token
+        println("Found mask token")
+        return [text]
+    end
+    result = TextEncodeBase.splitting(nothing, t.base, w)
+    println("After word splitting: ", result)
+    return result
+end
+
+function wrap(::Nothing, t::MaskTokenization, w::WordStage, (istoken, x))
+    meta = updatemeta(getmeta(w), (ismask = x == t.mask_token,))
+    return istoken ? Token(x, meta) : Word(x, meta)
+end
+
 """
     ModernBertEncoder(config_path::String)
 
@@ -122,18 +163,17 @@ function ModernBertEncoder(config_path::String)
     # Create tokenizer pipeline
     base_tokenizer = BPE(bpe_merges)
     tokenizer = BPETokenizer(
-        TextEncodeBase.IndexedTokenization(
         TextEncodeBase.MatchTokenization(
-        CodeNormalizer(
-            BPETokenization(
-                GPT2Tokenization(),
-                base_tokenizer
+        MaskTokenization(
+            CodeNormalizer(
+                BPETokenization(
+                    GPT2Tokenization(),
+                    base_tokenizer
+                ),
+                gpt2_codemap()
             ),
-            gpt2_codemap()
-        ),
-        # collect(keys(special_tokens))
-        ["[MASK]", " [MASK]", "[SEP]", "[CLS]", "[UNK]", "[PAD]"]
-    )
+            "[MASK]"),
+        collect(keys(special_tokens))
     )
     )
 
