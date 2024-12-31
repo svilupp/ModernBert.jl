@@ -7,8 +7,8 @@ tokenizer_path = joinpath(dirname(model_path), "tokenizer.json")
 
 # Check model files and configuration
 println("\nChecking model files and configuration...")
-model_path = joinpath(@__DIR__, "model", "model.onnx")
-tokenizer_path = joinpath(@__DIR__, "model", "tokenizer.json")
+model_path = joinpath("model", "model.onnx")
+tokenizer_path = joinpath("model", "tokenizer.json")
 @assert isfile(model_path) "model.onnx not found"
 @assert isfile(tokenizer_path) "tokenizer.json not found"
 
