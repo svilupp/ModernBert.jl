@@ -1,9 +1,8 @@
-
 using ModernBert
 
 ## Download the model and tokenizer
 model_path = download_model(
-    "https://huggingface.co/answerdotai/ModernBERT-large", "data", "model.onnx")
+    "https://huggingface.co/answerdotai/ModernBERT-large", "model", "model.onnx")
 tokenizer_path = joinpath(dirname(model_path), "tokenizer.json")
 
 ## Load the tokenizer
@@ -22,3 +21,7 @@ decode(enc, encode(enc, text))
 
 text = " [MASK] [PAD] "
 tokenize(enc, text)
+
+## Embedding
+model = BertModel(; model_path)
+embed(model, "hello world")

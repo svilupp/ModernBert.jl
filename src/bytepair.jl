@@ -80,37 +80,37 @@ end
 TextEncodeBase.splittability(::Nothing, ::MaskTokenization, ::WordStage) = Splittable()
 
 # Define the actual splitting behavior
-# function TextEncodeBase.splitting(::Nothing, t::MaskTokenization, w::WordStage)
-#     text = getvalue(w)
-#     if text == t.mask_token
-#         return [text]  # Return as-is, no space prefix
-#     end
-#     return TextEncodeBase.splitting(t.base, w)  # Otherwise use base tokenizer
-# end
-function TextEncodeBase.splitting(p::ParentStages, t::MaskTokenization, s::SentenceStage)
-    text = getvalue(s)
-    println("Input text: ", text)
-    result = TextEncodeBase.splitting(p, t.base, s)
-    println("After base splitting: ", result)
-    return result
-end
-
 function TextEncodeBase.splitting(::Nothing, t::MaskTokenization, w::WordStage)
     text = getvalue(w)
-    println("Word stage text: ", text)
     if text == t.mask_token
-        println("Found mask token")
-        return [text]
+        return [text]  # Return as-is, no space prefix
     end
-    result = TextEncodeBase.splitting(nothing, t.base, w)
-    println("After word splitting: ", result)
-    return result
+    return TextEncodeBase.splitting(t.base, w)  # Otherwise use base tokenizer
 end
+# function TextEncodeBase.splitting(p::ParentStages, t::MaskTokenization, s::SentenceStage)
+#     text = getvalue(s)
+#     println("Input text: ", text)
+#     result = TextEncodeBase.splitting(p, t.base, s)
+#     println("After base splitting: ", result)
+#     return result
+# end
 
-function wrap(::Nothing, t::MaskTokenization, w::WordStage, (istoken, x))
-    meta = updatemeta(getmeta(w), (ismask = x == t.mask_token,))
-    return istoken ? Token(x, meta) : Word(x, meta)
-end
+# function TextEncodeBase.splitting(::Nothing, t::MaskTokenization, w::WordStage)
+#     text = getvalue(w)
+#     println("Word stage text: ", text)
+#     if text == t.mask_token
+#         println("Found mask token")
+#         return [text]
+#     end
+#     result = TextEncodeBase.splitting(nothing, t.base, w)
+#     println("After word splitting: ", result)
+#     return result
+# end
+
+# function wrap(::Nothing, t::MaskTokenization, w::WordStage, (istoken, x))
+#     meta = updatemeta(getmeta(w), (ismask = x == t.mask_token,))
+#     return istoken ? Token(x, meta) : Word(x, meta)
+# end
 
 """
     ModernBertEncoder(config_path::String)
@@ -229,7 +229,7 @@ function TextEncodeBase.encode(
     # Get token IDs directly from the vocab
     ids = encoder.encode(text)
     ## Offset by 1 to match the tokenizer in Python
-    return ids .- 1
+    return reshape(ids .- 1, :, 1)
 end
 
 function TextEncodeBase.decode_indices(

@@ -53,13 +53,13 @@ function download_config_files(repo_url::String, target_dir::String)
 end
 
 """
-    download_model(repo_url::String, target_dir::String="data", model_name::String="model.onnx")
+    download_model(repo_url::String, target_dir::String="model", model_name::String="model.onnx")
 
 Download model and configuration files from HuggingFace repository.
 
 # Arguments
 - `repo_url::String`: URL of the HuggingFace repository (e.g. "https://huggingface.co/answerdotai/ModernBERT-large")
-- `target_dir::String`: Local directory to save files (default: "data")
+- `target_dir::String`: Local directory to save files (default: "model")
 - `model_name::String`: Name of the model file to download (default: "model.onnx")
 
 # Returns
@@ -71,10 +71,10 @@ The target directory path where files were downloaded.
 
 # Examples
 ```julia
-download_model("https://huggingface.co/answerdotai/ModernBERT-large","data","model.onnx")
+download_model("https://huggingface.co/answerdotai/ModernBERT-large","model","model.onnx")
 ```
 """
-function download_model(repo_url::String, target_dir::String = "data",
+function download_model(repo_url::String, target_dir::String = "model",
         model_name::String = "model.onnx")
     # Download config files first
     target_dir = download_config_files(repo_url, target_dir)
