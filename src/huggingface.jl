@@ -45,9 +45,55 @@ function download_config_files(repo_url::String, target_dir::String)
     catch e
         # Clean up any partially downloaded files
         for file in downloaded_files
-            rm(file, force=true)
+            rm(file, force = true)
         end
         rethrow(e)
     end
     return target_dir
+end
+
+"""
+    download_model(repo_url::String, target_dir::String="model", model_name::String="model.onnx")
+
+Download model and configuration files from HuggingFace repository.
+
+# Arguments
+- `repo_url::String`: URL of the HuggingFace repository (e.g. "https://huggingface.co/answerdotai/ModernBERT-large")
+- `target_dir::String`: Local directory to save files (default: "model")
+- `model_name::String`: Name of the model file to download (default: "model.onnx")
+
+# Returns
+The target directory path where files were downloaded.
+
+# Throws
+- `ArgumentError` if the URL is invalid
+- `Downloads.RequestError` if any file fails to download
+
+# Examples
+```julia
+download_model("https://huggingface.co/answerdotai/ModernBERT-large","model","model.onnx")
+```
+"""
+function download_model(repo_url::String, target_dir::String = "model",
+        model_name::String = "model.onnx")
+    # Download config files first
+    target_dir = download_config_files(repo_url, target_dir)
+
+    # Download model file
+    repo_id = parse_repo_id(repo_url)
+    model_url = "https://huggingface.co/$(repo_id)/resolve/main/onnx/$(model_name)?download=true"
+    model_path = joinpath(target_dir, model_name)
+
+    if !isfile(model_path)
+        try
+            Downloads.download(model_url, model_path)
+            @info "Downloaded: $model_path"
+        catch e
+            # Clean up if model download fails
+            rm(model_path, force = true)
+            rethrow(e)
+        end
+    end
+
+    return model_path
 end

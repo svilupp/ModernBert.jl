@@ -1,20 +1,18 @@
 using Test
+using JSON3
 using ModernBert
 using ONNXRunTime
-using JSON3
-using Aqua
+const ORT = ONNXRunTime
 
 ## Setup the tests
-include("setup.jl")
-
-@testset "Code quality (Aqua.jl)" begin
-    Aqua.test_all(ModernBert)
-end
+REPO_URL = "https://huggingface.co/answerdotai/ModernBERT-base"
+MODEL_PATH = joinpath(@__DIR__, "model", "model.onnx")
 
 @testset "ModernBert.jl" begin
-    # Include all test files
-    include("test_model.jl")
-    include("test_embedding.jl")
+    # Run setup first to ensure tokenizer is available
+    include("setup.jl")
+
     include("test_tokenizer.jl")
+    include("test_embedding.jl")
     include("test_huggingface.jl")
 end

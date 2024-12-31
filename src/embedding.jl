@@ -1,6 +1,6 @@
 struct BertModel
     session::Any  # Use Any to accommodate ORT model type
-    encoder::BPETokenizer
+    encoder::ModernBertEncoder
 end
 
 function Base.show(io::IO, model::BertModel)
@@ -23,20 +23,9 @@ function BertModel(;
 
     # Load tokenizer configuration
     vocab_path = joinpath(config_dir, "tokenizer.json")
-    vocab_config = JSON3.read(read(vocab_path))
-    vocab = Dict{String, Int}(String(k) => v for (k, v) in vocab_config["model"]["vocab"])
 
-    # Extract special tokens from added_tokens and add them to vocabulary
-    special_tokens = Dict{String, Int}()
-    for token in vocab_config["added_tokens"]
-        token_content = String(token["content"])
-        token_id = token["id"]
-        special_tokens[token_content] = token_id
-        vocab[token_content] = token_id  # Add to main vocabulary
-    end
-
-    # Create BPE tokenizer with the vocabulary and special tokens
-    encoder = load_tokenizer(vocab_path)
+    # Create ModernBertEncoder with the vocabulary and special tokens
+    encoder = ModernBertEncoder(vocab_path)
 
     # Initialize ONNX session with high-level API
     session = ORT.load_inference(model_path)
@@ -44,11 +33,11 @@ function BertModel(;
     return BertModel(session, encoder)
 end
 
-function encode(model::BertModel, text::AbstractString)
+function TextEncodeBase.encode(model::BertModel, text::AbstractString)
     return encode(model.encoder, text)
 end
 
-function encode(model::BertModel, texts::AbstractVector{<:AbstractString})
+function TextEncodeBase.encode(model::BertModel, texts::AbstractVector{<:AbstractString})
     return encode(model.encoder, texts)
 end
 
@@ -111,42 +100,33 @@ function mean_pooling(
     return normalized .|> Float32
 end
 
-function embed(model::BertModel, text::AbstractString; kwargs...)
-    token_ids, token_type_ids, attention_mask = encode(model, text)
+function embed(model::BertModel,
+        texts::Union{AbstractString, AbstractVector{<:AbstractString}};
+        verbose::Bool = false, kwargs...)
+    token_ids = encode(model, texts)
+    # Create attention mask by detecting padding tokens using encoder's special token mapping
+    pad_id = model.encoder.special_tokens["[PAD]"]
+    attention_mask = token_ids .!= pad_id
 
-    inputs = Dict(
-        "input_ids" => reshape(Int64.(token_ids), :, 1),
-        "attention_mask" => reshape(Int64.(attention_mask), :, 1)
-    )
-
-    outputs = model.session(inputs)
-    logits = first(values(outputs)) .|> Float32
-
-    sentence_embedding = mean_pooling(logits, attention_mask; kwargs...)
-
-    return sentence_embedding
-end
-
-function embed(model::BertModel, texts::AbstractVector{<:AbstractString}; kwargs...)
-    token_ids, token_type_ids, attention_mask = encode(model, texts)
+    # Convert to Int64 and ensure correct shape
+    verbose && @info "Token IDs shape: $(size(token_ids))"
+    verbose && @info "Attention mask shape: $(size(attention_mask))"
 
     inputs = Dict(
         "input_ids" => Int64.(token_ids),
         "attention_mask" => Int64.(attention_mask)
     )
 
-    outputs = model.session(inputs)
-    logits = first(values(outputs)) .|> Float32
+    logits = model.session(inputs)["logits"] .|> Float32
+    verbose && @info "Logits shape: $(size(logits))"
 
-    sentence_embeddings = mean_pooling(logits, attention_mask)
+    sentence_embedding = mean_pooling(logits, attention_mask; verbose, kwargs...)
+    verbose && @info "Sentence embedding shape: $(size(sentence_embedding))"
 
-    return sentence_embeddings
+    return sentence_embedding
 end
 
-function (m::BertModel)(text::AbstractString; kwargs...)
+function (m::BertModel)(
+        text::Union{AbstractString, AbstractVector{<:AbstractString}}; kwargs...)
     return embed(m, text; kwargs...)
-end
-
-function (m::BertModel)(texts::AbstractVector{<:AbstractString}; kwargs...)
-    return embed(m, texts; kwargs...)
 end

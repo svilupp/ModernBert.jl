@@ -1,25 +1,31 @@
 module ModernBert
 
-using DataDeps
-using DoubleArrayTries
-const DAT = DoubleArrayTries
-using Downloads
+# Core dependencies
 using JSON3
 using ONNXRunTime
-import ONNXRunTime as ORT  # Use high-level API
-using Statistics
-using StringViews
-using Unicode
-using WordTokenizers
+const ORT = ONNXRunTime
+using Downloads
+using Base: ones, zeros
+using TextEncodeBase
+using BytePairEncoding
+using BytePairEncoding: BPE, BPETokenization, BPETokenizer, GPT2Tokenization, Merge,
+                        parse_merge, gpt2_codemap
+using TextEncodeBase: encode, tokenize, FlatTokenizer, CodeNormalizer
+using TextEncodeBase: Sentence, TokenStages, TokenStage, SentenceStage, WordStage,
+                      ParentStages, getvalue
+using TextEncodeBase: Vocab, DictBackedLookupDict, PerforatedOverwritableLookupVector,
+                      DATLookupVector
+using Base: ones, zeros
+# Import TextEncodeBase types and methods for extension
+import TextEncodeBase: AbstractTokenizer, encode, tokenize
 
-export BPETokenizer, load_tokenizer
-export tokenize, encode
-include("bpe.jl")
+export ModernBertEncoder, tokenize, encode, decode
+include("bytepair.jl")
 
 export BertModel, embed
 include("embedding.jl")
 
-export download_config_files
+export download_config_files, download_model
 include("huggingface.jl")
 
-end # module
+end # module ModernBert

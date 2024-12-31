@@ -6,6 +6,11 @@
 [![Coverage](https://codecov.io/gh/svilupp/ModernBert.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/svilupp/ModernBert.jl) 
 [![Aqua](https://raw.githubusercontent.com/JuliaTesting/Aqua.jl/master/badge.svg)](https://github.com/JuliaTesting/Aqua.jl)
 
+> [!WARNING]
+> This is a work in progress. Use at your own risk.
+>
+> Currently, the tokenizer IS NOT WORKING CORRECTLY!!!
+
 
 Read more: https://huggingface.co/blog/modernbert
 
