@@ -164,16 +164,15 @@ function ModernBertEncoder(config_path::String)
     base_tokenizer = BPE(bpe_merges)
     tokenizer = BPETokenizer(
         TextEncodeBase.MatchTokenization(
-        MaskTokenization(
-            CodeNormalizer(
-                BPETokenization(
-                    GPT2Tokenization(),
-                    base_tokenizer
-                ),
-                gpt2_codemap()
+        CodeNormalizer(
+            BPETokenization(
+                GPT2Tokenization(),
+                base_tokenizer
             ),
-            "[MASK]"),
-        collect(keys(special_tokens))
+            gpt2_codemap()
+        ),
+        # collect(keys(special_tokens))
+        [Regex(raw"\s*" * Base.wrap_string("[MASK]", UInt32(0)))]
     )
     )
 
@@ -191,6 +190,7 @@ function ModernBertEncoder(config_path::String)
 
     ## Offset for 0-indexing
     special_tokens_py = Dict(k => v + 1 for (k, v) in special_tokens)
+    special_tokens_py[" [MASK]"] = 50285
     vector = PerforatedOverwritableLookupVector(
         DATLookupVector(vocab_vector),
         DictBackedLookupDict(

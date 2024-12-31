@@ -22,7 +22,7 @@ println("Test 1 tokens: ", tokens1)
 println("Test 1 ids: ", ids1)
 @test tokens1 ==
       ["[CLS]", "Hello", "Ġworld", "!", "ĠThis", "Ġis", "Ġa", "Ġtest", ".", "[SEP]"]
-@test ids1 == [50281, 12092, 1533, 2, 831, 310, 247, 1071, 15, 50282]
+@test vec(ids1) == [50281, 12092, 1533, 2, 831, 310, 247, 1071, 15, 50282]
 println("✓ Test case 1 passed")
 
 # Test case 2: Masked sentence
@@ -33,7 +33,7 @@ println("Test 2 tokens: ", tokens2)
 println("Test 2 ids: ", ids2)
 @test tokens2 ==
       ["[CLS]", "The", "Ġcapital", "Ġof", "ĠFrance", "Ġis", " [MASK]", ".", "[SEP]"]
-@test ids2 == [50281, 510, 5347, 273, 6181, 310, 50284, 15, 50282]
+@test vec(ids2) == [50281, 510, 5347, 273, 6181, 310, 50284, 15, 50282]
 println("✓ Test case 2 passed")
 
 ## Embedding
